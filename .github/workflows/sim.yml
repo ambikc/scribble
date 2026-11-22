@@ -1,0 +1,15 @@
+name: simulator
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: sim } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: sim/package-lock.json }
+      - run: npm ci
+      - run: npm test            # regenerates config, then level, physics, golden and vision tests
+      - run: npm run build       # typecheck + production build
+      - name: generated files are up to date
+        run: git diff --exit-code -- src/config.ts ../shared/generated/config.h

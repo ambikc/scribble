@@ -1,0 +1,25 @@
+{
+  "name": "scribble-run-sim",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Browser simulator for Scribble Run (M5Stack CoreS3). Same physics, level format and vision pipeline as the firmware.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "gen": "node ../tools/gen-config.mjs && mkdir -p public && cp ../docs/assets/scribble-run-level-template-a4.pdf public/",
+    "predev": "npm run gen",
+    "dev": "vite",
+    "prebuild": "npm run gen",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "npm run gen && vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9"
+  }
+}

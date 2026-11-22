@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scribble Run simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: light dark; --paper:#FFF4D6; --ink:#1C1C24; --green:#25C26E; --yellow:#FFD23F; --grey:#5B5646; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.5 Inter, system-ui, sans-serif; }
+  @media (prefers-color-scheme: dark) { :root { --paper:#23211C; --ink:#F4EEDC; --grey:#B9B3A0; } }
+  main { max-width: 1040px; margin: 0 auto; padding: 16px; }
+  h1 { font: 700 40px/1.1 Fredoka, Inter, sans-serif; margin: 8px 0 4px; }
+  p.lede { margin: 0 0 14px; color: var(--grey); }
+  .device { display: inline-block; background: #1C1C24; padding: 14px 14px 36px; border-radius: 26px; position: relative; max-width: 100%; }
+  .device::after { content:""; position:absolute; left:50%; bottom:11px; width:12px; height:12px; margin-left:-6px; border-radius:50%; background:#3A3A48; border:2px solid #55556A; }
+  /* the screen is exactly 320 x 240, shown at 3x (960 x 720), or smaller on a small display */
+  canvas#screen { display:block; width: min(960px, calc(100vw - 60px)); aspect-ratio: 4 / 3; image-rendering: pixelated; border-radius: 6px; background:#FFF4D6; touch-action: none; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 6px; align-items: center; }
+  button, label.btn, select { font: 600 15px Inter, system-ui, sans-serif; color: var(--ink); background: #fff; border: 2px solid var(--ink); border-radius: 12px; padding: 10px 14px; min-height: 44px; cursor: pointer; box-shadow: 3px 3px 0 var(--ink); }
+  @media (prefers-color-scheme: dark) { button, label.btn, select { background:#2E2B24; } }
+  button:active, label.btn:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--ink); }
+  button.primary { background: var(--green); color:#1C1C24; } button.warm { background: var(--yellow); color:#1C1C24; }
+  .group { display:flex; flex-wrap:wrap; gap:8px; align-items:center; } .group + .group { margin-left: 12px; padding-left: 12px; border-left: 2px dashed var(--grey); }
+  input[type=file] { display: none; }
+  #note { min-height: 1.6em; margin: 6px 0; font-weight: 600; }
+  details { margin: 14px 0; } summary { cursor: pointer; font-weight: 600; }
+  kbd { background:#fff; color:#1C1C24; border:1px solid #888; border-bottom-width:2px; border-radius:5px; padding:0 6px; font: 600 13px Inter, sans-serif; }
+  #debug canvas { width: 100%; image-rendering: pixelated; border: 2px solid var(--ink); border-radius: 6px; background:#fff; display:block; }
+  #debug .row { display:flex; gap:12px; flex-wrap:wrap; } #debug figure { margin:0; flex: 1 1 240px; max-width: 320px; } #debug figcaption { font-size: 13px; color: var(--grey); }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Scribble Run</h1>
+  <p class="lede">Simulator for the M5Stack CoreS3 game. The screen below is exactly 320 &times; 240, shown at 3&times;. Same physics, level format and paper-vision code as the firmware.</p>
+
+  <div class="device"><canvas id="screen" aria-label="Scribble Run screen, 320 by 240 pixels"></canvas></div>
+
+  <div class="controls">
+    <div class="group">
+      <button id="btn-tilt" title="Use your phone's tilt sensor">Phone tilt</button>
+      <span>or <kbd>&larr;</kbd> <kbd>&rarr;</kbd> to tilt, <kbd>Space</kbd> to jump</span>
+    </div>
+  </div>
+  <div class="controls">
+    <div class="group">
+      <strong>Paper mode:</strong>
+      <button id="btn-webcam">Webcam</button>
+      <label class="btn">Upload photo<input id="file-photo" type="file" accept="image/*"></label>
+      <button id="btn-demo" class="warm">Demo photo</button>
+      <select id="sel-preset" aria-label="Stress preset for the camera"></select>
+    </div>
+    <div class="group">
+      <button id="btn-download" class="primary">Download level (.scrb)</button>
+      <label class="btn">Load level<input id="file-level" type="file" accept=".scrb,.json"></label>
+    </div>
+  </div>
+  <div id="note" role="status">Tap <b>Play</b> on the title screen, or <b>Paper</b> and then <b>Demo photo</b>.</div>
+
+  <details>
+    <summary>How to try paper mode</summary>
+    <ol>
+      <li>Print <a href="scribble-run-level-template-a4.pdf" target="_blank" rel="noopener">the A4 template</a> at 100% and draw on it with a fat black marker, plus red and blue.</li>
+      <li>Photograph it with a phone (landscape, all four corner marks in view) and press <b>Upload photo</b>, or use <b>Webcam</b>.</li>
+      <li>No printer? <b>Demo photo</b> draws your current level onto the template through a simulated camera. The <i>stress preset</i> adds dim light, shadows, tilt, noise or blur.</li>
+      <li>On the Camera check screen watch the four lights, then press the big GO button. The vision stages appear below the screen.</li>
+    </ol>
+  </details>
+
+  <section id="debug" hidden>
+    <h2 style="font:700 22px Fredoka,Inter,sans-serif">What the vision pipeline saw</h2>
+    <div class="row">
+      <figure><canvas id="dbg-page"></canvas><figcaption>straightened page</figcaption></figure>
+      <figure><canvas id="dbg-ink"></canvas><figcaption>ink strength</figcaption></figure>
+      <figure><canvas id="dbg-labels"></canvas><figcaption>ground / spike / bouncy</figcaption></figure>
+    </div>
+    <p id="dbg-text"></p>
+  </section>
+</main>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

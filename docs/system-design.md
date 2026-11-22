@@ -395,13 +395,13 @@ Stages 3–10 are integer maths on small arrays (no OpenCV). The only floating p
 | # | Stage | What it does | Key detail |
 |---|-------|--------------|------------|
 | 0 | **Capture** | Exposure and white balance were **locked** when the countdown started. At "snap" the camera grabs and **averages `FRAME_AVG` (3) VGA RGB565 frames**. | Standing still, so averaging cuts sensor noise about 1.7× without blur. |
-| 1 | **Find the marks** | **(a)** Gray (640×480 → 320×240 by 2×2 averaging). **(b)** Adaptive threshold: dark if `gray < MARK_RATIO (0.6) × local mean` over a 21 px box (integral image). **(c)** 4-connected components; keep blobs with area in the expected range (a Ø 10 mm disc is 8–19 px across at 320 wide for 35–50 cm), bounding box aspect 0.8–1.25 and fill ratio 0.55–0.9. **(d)** Pick the best **four** by score: roughly rectangular (angles 90° ± 25°), opposite sides within 25 %, mark areas within 1.6×, overall aspect 5 : 3 (or 3 : 5 if turned sideways) ± 30 %. With ≤ 20 candidates this is ≤ 4,845 combinations. **(e)** Orientation: sample the centre of each mark at full VGA resolution; the one with a **bright centre** (the ring) is **top-left**; order the others clockwise from it. **(f)** Refine each centre to sub-pixel by intensity-weighted centroid in a 40 × 40 VGA window. | Output: four points `P[0..3]` = TL, TR, BR, BL in VGA pixels, plus a confidence. If no ring can be told from a disc, assume the usual orientation and set `ORIENT_GUESS`. If fewer than four marks or no good quad: **marks not found** → fallback below. |
+| 1 | **Find the marks** | **(a)** Gray (640×480 → 320×240 by 2×2 averaging). **(b)** Adaptive threshold: dark if `gray < MARK_RATIO (0.6) × local mean` over a 21 px box (integral image). **(c)** 4-connected components; keep blobs with area in the expected range (a Ø 10 mm disc is 8–19 px across at 320 wide for 35–50 cm), bounding-box aspect 0.6–1.65 (a tilted disc is an ellipse) and fill ratio 0.40–0.90 (a ring at the far side of a tilted sheet is only about half filled). **(d)** Pick the best **four** by score: roughly rectangular (angles 90° ± 25°), opposite sides within 40 %, mark areas within 2.6× (perspective makes the near marks much bigger), overall aspect 5 : 3 (or 3 : 5 if turned sideways) ± 30 %. With ≤ 20 candidates this is ≤ 4,845 combinations. **(e)** Orientation: sample the centre of each mark at full VGA resolution; the one with a **bright centre** (the ring) is **top-left**; order the others clockwise from it. **(f)** Refine each centre to sub-pixel by intensity-weighted centroid in a 40 × 40 VGA window. | Output: four points `P[0..3]` = TL, TR, BR, BL in VGA pixels, plus a confidence. If no ring can be told from a disc, assume the usual orientation and set `ORIENT_GUESS`. If fewer than four marks or no good quad: **marks not found** → fallback below. |
 | 2 | **Straighten** | Solve the **homography** `H` mapping the four points to the four level-pixel mark positions in §5.1 (8 × 8 linear solve, once, in `double`/`float`). For each of the 61,440 level pixels, map its centre through `H⁻¹` (16.16 fixed point) into the VGA frame and **area-sample** it (bilinear on the 2 × 2 neighbours; the 640 → 320 shrink is ~1.6×) → a **320 × 192 RGB565 "straight page"**. | This replaces the old "crop": a tilted, rotated or off-centre page lands exactly on the level grid. |
 | 3 | **Convert** | RGB565 → 8-bit R, G, B. `gray = (77R + 150G + 29B) >> 8`; `max`, `min`; `sat = (max-min)·255 / max` (0 if `max < 16`); `hue` 0–359° by the standard integer HSV formula. | One pass, row by row. |
 | 4 | **Paper estimate** | 16 × 16 blocks (20 × 12). `bg[block]` = max gray in the block; 3 × 3 box-blur the grid; **bilinear-upsample** to a per-pixel `bg(x,y)`. | The paper is the brightest thing in every block, so uneven lighting and soft shadows are divided out. |
 | 5 | **Ink strength** | `ink = 255·(bg − gray)/bg`, clamped. **Ink** if `ink ≥ INK_THRESH` (30 % → 77). Never ink where `bg < BG_MIN` (80). | |
 | 6 | **Classify** | For each ink pixel: if `V ≥ COLOR_V_MIN` (80) **and** `sat ≥ SAT_MIN` (90): hue in `[345°, 360°) ∪ [0°, 20°]` → **Spike**; `[195°, 255°]` → **Bouncy**. Otherwise → **Ground**. | Black crayon is dark and nearly colourless → Ground. |
-| 7 | **Clean up** | Per class: **despeckle** (drop components < `MIN_BLOB` 30 px), **close** 5 × 5 (join streaky wax gaps), **thicken** by `THICKEN_R` (2), zero a 3 px border, **priority Spike > Bouncy > Ground** where masks overlap. | A 3 mm line is ≈ 3.9 level px; thickening by 2 on each side makes it ≈ 8 px, the physics minimum. |
+| 7 | **Clean up** | Per class: **despeckle** (drop components < `MIN_BLOB` 30 px), **close** 5 × 5 (join streaky wax gaps), **thicken thin strokes only** (anything that vanishes under a 5 × 5 opening is thinner than 5 px; only those pixels are dilated by `THICKEN_R` 2, so strokes that are already fat keep their width), zero a 3 px border, **priority Spike > Bouncy > Ground** where masks overlap. | A 3 mm line is ≈ 3.9 level px, so it grows to ≈ 8 px, the physics minimum; a fat 8 px marker stroke is left alone. (Thickening *everything* made fat strokes 12 px and lowered the match with the original from 0.98 to 0.65, found while building the simulator.) |
 | 8 | **Quality check** | Ink coverage, blob count, paper brightness, marks status; sets a status (§5.8). | |
 | 9 | **Place pins** | **Start:** scan columns x = 16 … 120 left to right for the first column with a solid pixel with ≥ 24 px of clear space above; Start = (x, top − 9). Not found → (32, 32). **Flag:** same from x = 304 down to 200; not found → (288, 100). If < 100 px apart, push the Flag to the far right. | Both are draggable on Review. |
 | 10 | **Pack** | Bit-pack into `Level`, set `flags.bit2` (from paper), generate the thumbnail. | An ordinary level (§4). |
@@ -418,7 +418,11 @@ Stages 3–10 are integer maths on small arrays (no OpenCV). The only floating p
 | `FRAME_AVG` | 3 | 1–6 | Frames averaged at capture |
 | `MARK_RATIO` | 0.60 | 0.4–0.8 | Dark-mark threshold relative to local mean |
 | `MARK_WINDOW` | 21 px (at 320 wide) | 15–41 | Adaptive-threshold window |
-| `MARK_AREA_MIN/MAX` | 40 / 330 px (at 320 wide) | — | Expected mark size |
+| `MARK_AREA_MIN/MAX` | 16 / 330 px (at 320 wide) | — | Expected mark size (the far ring of a tilted sheet is only ~30 px) |
+| `MARK_ASPECT_MIN/MAX` | 0.6 / 1.65 | — | Bounding-box width ÷ height |
+| `MARK_FILL_MIN/MAX` | 0.40 / 0.90 | — | Blob area ÷ bounding-box area (disc 0.79, ring ~0.5–0.7) |
+| `QUAD_AREA_RATIO_MAX` | 2.6 | 1.5–4 | Largest ÷ smallest mark area |
+| `QUAD_SIDE_TOL` | 0.40 | 0.2–0.6 | Opposite sides may differ by this fraction |
 | `QUAD_ANGLE_TOL` | 25° | 10–40 | Allowed deviation from a right angle |
 | `QUAD_ASPECT_TOL` | 30 % | 15–50 | Allowed deviation from 5 : 3 (or 3 : 5) |
 | `AREA_SCALE` | 0.92 | — | Drawing area as a fraction of the dot rectangle (matches the PDF) |
@@ -428,7 +432,7 @@ Stages 3–10 are integer maths on small arrays (no OpenCV). The only floating p
 | `SAT_MIN`, `COLOR_V_MIN` | 90, 80 | 60–140 | Needed to count as red or blue |
 | `HUE_RED`, `HUE_BLUE` | 345–20°, 195–255° | — | Crayon hues |
 | `MIN_BLOB` | 30 px | 10–100 | Smallest kept component |
-| `CLOSE_R`, `THICKEN_R` | 2, 2 | 0–4 | Closing radius, final dilation |
+| `CLOSE_R`, `THICKEN_R`, `THIN_OPEN_R` | 2, 2, 2 | 0–4 | Closing radius; dilation of thin strokes; opening radius that defines "thin" (< 5 px) |
 | `EDGE_MARGIN` | 3 px | 0–8 | Zeroed border |
 | `AE_LEVEL` | +1 | −2…+2 | Exposure bias (white paper fools auto-exposure into grey); tuned on device |
 
@@ -475,6 +479,24 @@ The Camera check ([screens.md §4.2](screens.md#42-camera-check-the-calibration-
 
 **Calibrating the camera facts on the device (Step 6).** Hold-2 s on **?** shows the numbers overlay. Put the printed sheet at **measured** distances (35, 40, 45 cm with a ruler) and note `w`; then `f = w × d / 270 mm` gives the real focal length for the 320-wide frame (replace 377 and re-derive the field of view), and the *Sharp* edge width at each distance confirms the focus range. These values are written back to `shared/constants.json`.
 
+### 5.9 What the simulator measured
+
+The browser simulator renders a known level onto the printed template through a synthetic camera (pinhole, 46° FOV, distance, tilt, light, noise, blur) and runs this exact pipeline on it. Match = overlap (intersection ÷ union) of the recovered layer with the original (`sim/scripts/vision-report.ts`, 8 px strokes, 40 cm unless stated):
+
+| Situation | Marks found | Ground | Spike | Bouncy | Live check says |
+|-----------|:-----------:|-------:|------:|-------:|-----------------|
+| 35 / 40 / 45 / 50 cm | yes | 0.98 / 0.98 / 0.98 / 0.97 | 1.00 | 1.00 | distance **35 / 40 / 45 / 50 cm** (exact); 50 cm: Distance yellow |
+| yaw 10° / **20°** | yes | 0.97 / 0.95 | 1.00 / 0.96 | 1.00 / 0.96 | Level **yellow** at 20° |
+| yaw 30° | **no** → centre-crop | 0.03 | — | — | no marks |
+| yaw 15°, pitch −10° | yes | 0.98 | 1.00 | 1.00 | all green |
+| rolled 12°, upside down (ring) | yes | 0.98 | 1.00 | 1.00 | all green |
+| dim light (45 %), uneven light 40 %, hard shadow | yes | 0.97 / 0.98 / 0.96 | 1.00 | 1.00 | Light yellow when dim |
+| sensor noise σ = 12 | yes | 0.97 | 1.00 | 1.00 | — |
+| defocus (3 px blur) | yes | 0.80 | 0.98 | 0.99 | Sharp **yellow** (edge 2.7 px) |
+| no marks (plain sheet) | no → centre-crop | 0.34 | 0.05 | 0.11 | no marks |
+
+**Read this with care:** it is a *synthetic* camera and a *clean* drawing, so it proves the algorithm and the thresholds are self-consistent, not that a real GC0308 and a real child's crayon behave the same. Real photos (Step 6/7 of the build plan) are the test that counts.
+
 ### 5.8 Limits and fallbacks
 
 **Honest limits** (so we don't over-promise to a 7-year-old):
@@ -487,7 +509,7 @@ The Camera check ([screens.md §4.2](screens.md#42-camera-check-the-calibration-
 | **Poor light** | Low contrast; noise | Light light; thinner/thicker ink; automatic retry (below) |
 | **Shadows** | A soft shadow is divided out by the paper estimate; a *sharp* shadow edge (a hand, the device) can leave a false dark band up to ~16 px wide | Light light; Retake; fix in Edit. A stronger fix is a stretch item |
 | **Glare on waxy crayon** | Highlights drop ink pixels | The close step bridges small gaps; the Light light warns about glare |
-| **Tilted page** | Perspective | Corrected by the four marks up to about **±25°**; the Level light warns beyond ±15° |
+| **Tilted page** | Perspective | Corrected by the four marks: **±20° works** in the simulator (95 % match); at **30° the marks are no longer found** and it falls back to a centre-crop. The Level light turns yellow beyond ±15° |
 | **A mark hidden** (a thumb over a corner, a smudge) | Marks not found | Falls back to a centre-crop, flagged; Retake |
 | **Print scale wrong** ("Fit to page") | Distance reads wrong; world scale off | The 10 cm check line on the sheet; the *world* mapping uses the marks, so the level itself is still right |
 | **Lens smudge** | Everything soft | Sharp light → wipe the lens |
@@ -522,11 +544,11 @@ for (;;) {
     uint32_t now = micros();
     acc += min((now - last) * 1e-6f, 0.1f);        // clamp: avoid a spiral of death
     last = now;
-    InputState in = input_poll();                  // touch edges + filtered tilt
     int ticks = 0;
     while (acc >= DT && ticks < 6) {               // catch up, but never more than 6 ticks
+        InputState in = input_poll();              // tilt filtered once per tick; touch edges are LATCHED until consumed
         modes_tick(in, DT);                        // state machine; physics inside Play
-        in.touch.pressed = in.touch.released = false;   // edges consumed once
+        input_consume_edges();                     // a tap is seen by exactly one tick (never lost on a frame with no tick)
         acc -= DT; ++ticks;
     }
     renderer_frame(modes_view());                  // draw the latest state
@@ -599,6 +621,8 @@ for each of n sub-steps (dt/n):
     if dist(ball, flag_centre) < FLAG_HIT_RADIUS → EV_WIN
 ```
 
+**Integration.** Gravity is applied as half a kick before the move and half after (leapfrog), so a 300 px/s jump peaks at exactly 50 px and a 480 px/s bounce at 128 px; plain Euler would give 47.5 px.
+
 ### 7.2 Contact normal from sample points
 
 Sample **`N = 16`** points evenly around the circle at angle `θᵢ = 2πi/16`, position `(x + R cosθᵢ, y + R sinθᵢ)`, rounded down to pixels.
@@ -626,7 +650,7 @@ Friction is part of the rolling model (game-design §6), applied only while `gro
 
 ### 7.4 Preventing tunnelling
 
-* The **minimum thickness of any material is 8 px** (brush 8 px; paper levels thickened in vision stage 6c), and a sub-step never moves more than **4 px**, so the ball can never jump across a line.
+* The **minimum thickness of any material is 8 px** (brush 8 px; paper levels: thin strokes thickened in vision stage 7), and a sub-step never moves more than **4 px**, so the ball can never jump across a line.
 * Eraser leftovers thinner than 8 px can exist; a sub-step of 4 px can in theory skip a 3-px sliver. Accepted (a visible sliver barely matters) and covered by the **unstick** rule below.
 
 ### 7.5 Edge cases

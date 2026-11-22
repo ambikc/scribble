@@ -497,7 +497,7 @@ No score, timer or lives on screen.
 
 ## 8. Pause / menu
 
-An overlay: the scene behind is dimmed and frozen. A 3 × 2 grid of big buttons (each 96 × 80 px; a 288 × 160 panel at x 16, y 16). Icons only. **←** (top-left chip) or a tap outside the panel closes it.
+An overlay: the scene behind is dimmed and frozen. A 3 × 2 grid of big buttons (each 96 × 80 px; a 288 × 160 panel at x 16, y 56, so the ← chip stays visible above it). Icons only. **←** (top-left chip) or a tap outside the panel closes it.
 
 **From Play:**
 

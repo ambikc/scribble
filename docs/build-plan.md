@@ -22,8 +22,8 @@ flowchart LR
 
 These need no hardware.
 
-- [ ] **Approve the four docs** (this is the review you asked for).
-- [ ] **Build the browser simulator** (after approval): finger/mouse drawing, arrow-key tilt, `.scrb` download, plus **Upload photo / Webcam** running the same vision pipeline.
+- [x] **Approve the four docs** (done).
+- [x] **Build the browser simulator**: finger/mouse drawing, arrow-key tilt, `.scrb` download, plus **Upload photo / Webcam / Demo photo** running the same vision pipeline (done; see `sim/README.md`, run it with `cd sim && npm install && npm run dev`).
 - [ ] **Print the template** ([assets/scribble-run-level-template-a4.pdf](assets/scribble-run-level-template-a4.pdf)) at **100 % / Actual size** on white A4 and **measure the 10 cm line** with a ruler (it must read 10.0 cm ±1 mm). Print 10 copies. (Regenerate with `python3 tools/template/make_template.py` if you change anything.)
 - [ ] **Make a paper test set:** draw **10 levels** on the template with a fat black marker/crayon plus red and blue (some simple, some messy, one with a mark smudged). Photograph each with a phone, **landscape, from about 40 cm**, in **3 lights** (daylight, lamp, dim), some **tilted 10–20°** → about 30 photos. Keep them in `shared/golden/photos/`.
 - [ ] **Tune vision in the simulator** until ≥ 80 % of the test set gives a level you'd happily play, and the four marks are found in ≥ 95 % of the photos. This gives us the default parameters before the camera even arrives.
