@@ -8,6 +8,7 @@
 import * as C from './config';
 import { Level } from './level';
 import { renderTemplateShot, ShotOptions } from './synth';
+import VisionWorker from './vision.worker?worker&inline';
 import { pack565, VisionParams, VisionResult, VisionWork, visionProcess, visionRethreshold } from './vision';
 
 export type CamSource = 'none' | 'webcam' | 'photo' | 'demo';
@@ -43,7 +44,8 @@ export class Camera {
   constructor() {
     this.canvas.width = C.CAM_W; this.canvas.height = C.CAM_H;
     this.cx = this.canvas.getContext('2d', { willReadFrequently: true })!;
-    try { this.worker = new Worker(new URL('./vision.worker.ts', import.meta.url), { type: 'module' });
+    try { this.worker = new VisionWorker();                       // inlined blob worker; if it cannot start we use this thread
+      this.worker.onerror = () => { this.worker = null; this.pending.forEach((f) => f(null)); this.pending.clear(); };
       this.worker.onmessage = (e) => { const f = this.pending.get(e.data.id); if (f) { this.pending.delete(e.data.id); f(e.data.result); } }; } catch { this.worker = null; }
   }
 
@@ -134,7 +136,10 @@ export class Camera {
   private ask<T>(msg: Record<string, unknown>, transfer: Transferable[], fallback: () => T): Promise<T> {
     if (!this.worker) return new Promise((r) => setTimeout(() => r(fallback()), 0));
     const id = this.nextId++;
-    return new Promise((res) => { this.pending.set(id, res as (r: unknown) => void); this.worker!.postMessage({ id, ...msg }, transfer); });
+    return new Promise((res) => {
+      this.pending.set(id, (r) => res(r === null ? fallback() : (r as T)));      // a dead worker answers null: do it here instead
+      this.worker!.postMessage({ id, ...msg }, transfer);
+    });
   }
   processFrame(vga: Uint16Array, params: VisionParams): Promise<VisionResult> {
     const copy = vga.slice();

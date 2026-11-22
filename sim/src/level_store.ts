@@ -2,7 +2,7 @@
 // Browser storage is localStorage (each slot is the .scrb bytes, base64). Same file format as the device, so
 // "Download level" produces a file the device can load, and a .scrb from the device can be loaded here.
 import * as C from './config';
-import { Level, newLevel, cloneLevel, encodeLevel, decodeLevel, makeThumbnail, starterLevel, lessonSpike, lessonBouncy, fillRect, MAT_GROUND, LevelError } from './level';
+import { Level, newLevel, cloneLevel, encodeLevel, decodeLevel, makeThumbnail, starterLevel, lessonSpike, lessonBouncy, fillRect, MAT_GROUND, LevelError, levelToJSON } from './level';
 
 export interface Settings { sound: number; lastSlot: number; solvedMask: number; firstRunDone: boolean; standupSeen: boolean }
 
@@ -17,6 +17,9 @@ export function blankLevel(): Level {
   return l;
 }
 
+/** localStorage can throw (private windows, sandboxed frames); then we simply run without saving. */
+function safeStorage(): Storage | null { try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch { return null; } }
+
 export class LevelStore {
   slots: (Level | null)[] = Array(C.SLOTS).fill(null);
   thumbs: (Uint8Array | null)[] = Array(C.SLOTS).fill(null);
@@ -24,7 +27,7 @@ export class LevelStore {
   settings: Settings = { sound: 1, lastSlot: 0, solvedMask: 0, firstRunDone: false, standupSeen: false };
   private storage: Storage | null;
 
-  constructor(storage: Storage | null = typeof localStorage !== 'undefined' ? localStorage : null) { this.storage = storage; this.load(); }
+  constructor(storage: Storage | null = safeStorage()) { this.storage = storage; this.load(); }
 
   private get(k: string): string | null { try { return this.storage?.getItem(k) ?? null; } catch { return null; } }
   private set(k: string, v: string): boolean { try { this.storage?.setItem(k, v); return true; } catch { return false; } }
@@ -71,11 +74,30 @@ export class LevelStore {
   }
 }
 
-/** Save a level to the user's disk in the device format (.scrb). */
-export function downloadLevel(level: Level, fallbackName = 'my-level'): void {
+function slug(level: Level, fallback: string): string { return (level.name || fallback).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || fallback; }
+
+interface DownloadsCap { save(r: { filename: string; data: string | Blob }): Promise<{ status: string }> }
+
+/**
+ * Save a level to the user's disk. Returns a short message for the page to show.
+ *  - normal page : the device format, `<name>.scrb`
+ *  - hosted page : the viewer's sandbox blocks plain download links, so we use the `downloads` capability; it only allows
+ *                  certain file types and `.scrb` is not one of them, so the hosted page saves the JSON twin (`<name>.json`).
+ *                  `sim/scripts/json-to-scrb.ts` turns that into a `.scrb` for the device.
+ */
+export async function exportLevel(level: Level, fallbackName = 'my-level'): Promise<string> {
+  const name = slug(level, fallbackName);
+  const claude = (window as unknown as { claude?: { use?: (n: string) => Promise<unknown> } }).claude;
+  if (claude?.use) {
+    let cap: DownloadsCap | null = null;
+    try { cap = (await claude.use('downloads')) as DownloadsCap | null; } catch { cap = null; }
+    if (!cap) return 'Saving files is not available in this view.';
+    try { await cap.save({ filename: name + '.json', data: levelToJSON(level) }); return `Saved ${name}.json (the level's JSON twin). Run sim/scripts/json-to-scrb.ts to make the device's .scrb.`; }
+    catch (e) { const code = (e as { code?: string }).code; return code === 'declined' ? 'Save cancelled.' : 'Could not save the file here.'; }
+  }
   const bytes = encodeLevel(level, true);
   const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/octet-stream' });
-  const name = (level.name || fallbackName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || fallbackName;
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name + '.scrb';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  return `Saved ${name}.scrb (the device format). Copy it to the microSD card or load it back here.`;
 }

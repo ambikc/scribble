@@ -32,6 +32,7 @@ export class Input {
   private smoothed = 0;
   private orientationOn = false; private orientAx = 0;
   private pointerId: number | null = null;
+  private virtualDir = 0;           // on-screen tilt buttons (touch devices without a usable sensor)
   upright = true;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -81,11 +82,14 @@ export class Input {
     } catch { return false; }
   }
   get orientationActive() { return this.orientationOn; }
+  /** The on-screen tilt buttons: -1 left, 1 right, 0 off. */
+  setVirtualTilt(dir: number): void { this.virtualDir = dir; }
 
   /** Called once per 60 Hz tick. */
   poll(): InputState {
     // tilt: keyboard gives a full-scale ax, otherwise the phone sensor
-    const k = (this.keys.has('ArrowRight') || this.keys.has('d') || this.keys.has('D') ? 1 : 0) - (this.keys.has('ArrowLeft') || this.keys.has('a') || this.keys.has('A') ? 1 : 0);
+    const kd = (this.keys.has('ArrowRight') || this.keys.has('d') || this.keys.has('D') ? 1 : 0) - (this.keys.has('ArrowLeft') || this.keys.has('a') || this.keys.has('A') ? 1 : 0);
+    const k = kd !== 0 ? kd : this.virtualDir;
     this.rawAx = k !== 0 ? k * C.TILT_FULL : this.orientationOn ? this.orientAx : 0;
     // dead-zone, linear to TILT_FULL, then a light low-pass (same constants as the firmware)
     const mag = Math.max(0, Math.abs(this.rawAx) - C.TILT_DEADZONE) / (C.TILT_FULL - C.TILT_DEADZONE);

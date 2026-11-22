@@ -3,14 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Scribble Run simulator</title>
+<title>Scribble Run Simulator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <style>
-  :root { color-scheme: light dark; --paper:#FFF4D6; --ink:#1C1C24; --green:#25C26E; --yellow:#FFD23F; --grey:#5B5646; }
+  :root { --paper:#FFF4D6; --ink:#1C1C24; --card:#FFFFFF; --green:#25C26E; --yellow:#FFD23F; --grey:#5B5646; color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --paper:#23211C; --ink:#F4EEDC; --card:#2E2B24; --grey:#B9B3A0; color-scheme: dark; } }
+  :root[data-theme="dark"] { --paper:#23211C; --ink:#F4EEDC; --card:#2E2B24; --grey:#B9B3A0; color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.5 Inter, system-ui, sans-serif; }
-  @media (prefers-color-scheme: dark) { :root { --paper:#23211C; --ink:#F4EEDC; --grey:#B9B3A0; } }
   main { max-width: 1040px; margin: 0 auto; padding: 16px; }
   h1 { font: 700 40px/1.1 Fredoka, Inter, sans-serif; margin: 8px 0 4px; }
   p.lede { margin: 0 0 14px; color: var(--grey); }
@@ -19,10 +20,10 @@
   /* the screen is exactly 320 x 240, shown at 3x (960 x 720), or smaller on a small display */
   canvas#screen { display:block; width: min(960px, calc(100vw - 60px)); aspect-ratio: 4 / 3; image-rendering: pixelated; border-radius: 6px; background:#FFF4D6; touch-action: none; }
   .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 6px; align-items: center; }
-  button, label.btn, select { font: 600 15px Inter, system-ui, sans-serif; color: var(--ink); background: #fff; border: 2px solid var(--ink); border-radius: 12px; padding: 10px 14px; min-height: 44px; cursor: pointer; box-shadow: 3px 3px 0 var(--ink); }
-  @media (prefers-color-scheme: dark) { button, label.btn, select { background:#2E2B24; } }
+  button, label.btn, select { font: 600 15px Inter, system-ui, sans-serif; color: var(--ink); background: var(--card); border: 2px solid var(--ink); border-radius: 12px; padding: 10px 14px; min-height: 44px; cursor: pointer; box-shadow: 3px 3px 0 var(--ink); }
   button:active, label.btn:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--ink); }
   button.primary { background: var(--green); color:#1C1C24; } button.warm { background: var(--yellow); color:#1C1C24; }
+  #btn-left, #btn-right { min-width: 64px; font-size: 22px; touch-action: none; user-select: none; }
   .group { display:flex; flex-wrap:wrap; gap:8px; align-items:center; } .group + .group { margin-left: 12px; padding-left: 12px; border-left: 2px dashed var(--grey); }
   input[type=file] { display: none; }
   #note { min-height: 1.6em; margin: 6px 0; font-weight: 600; }
@@ -42,8 +43,11 @@
 
   <div class="controls">
     <div class="group">
-      <button id="btn-tilt" title="Use your phone's tilt sensor">Phone tilt</button>
-      <span>or <kbd>&larr;</kbd> <kbd>&rarr;</kbd> to tilt, <kbd>Space</kbd> to jump</span>
+      <strong>Tilt:</strong>
+      <button id="btn-left" aria-label="Roll left (hold)">&larr;</button>
+      <button id="btn-right" aria-label="Roll right (hold)">&rarr;</button>
+      <button id="btn-tilt" title="Use your phone's tilt sensor, where the browser allows it">Phone tilt</button>
+      <span>or keys <kbd>&larr;</kbd> <kbd>&rarr;</kbd>; <kbd>Space</kbd> or a tap to jump</span>
     </div>
   </div>
   <div class="controls">

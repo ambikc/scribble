@@ -10,12 +10,16 @@ npm test           # 44 unit tests: level format, physics, golden vectors, visio
 npm run build      # typecheck + production build into dist/
 ```
 
+## Hosted version
+
+`npm run build && node scripts/make-artifact.mjs` makes `dist/artifact/page.html`, one self-contained page (the app and its vision worker are inlined) that can be hosted as a claude.ai Artifact. Differences there: webcam and phone tilt are blocked by the host, so use **Upload photo** / **Demo photo** and the on-screen tilt arrows; and **Download level** saves the JSON twin (`.json`), because `.scrb` is not an allowed download type. Turn it into the device file with `npx tsx scripts/json-to-scrb.ts level.json`.
+
 ## Controls
 
 | Action | Mouse / keyboard | Device |
 |--------|------------------|--------|
 | Draw, drag pins, press buttons | mouse or finger on the screen | the touch screen |
-| Roll the ball | `←` `→` (or `A` `D`), or **Phone tilt** on a phone | tilt (BMI270) |
+| Roll the ball | `←` `→` (or `A` `D`), the on-screen arrows (hold), or **Phone tilt** | tilt (BMI270) |
 | Jump | `Space` / `↑` / click or tap anywhere on the playfield / the green pad | tap |
 | Go back | `Esc` (a convenience; on the device use the on-screen ← chip) | on-screen ← |
 

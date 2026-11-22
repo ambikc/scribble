@@ -3,7 +3,7 @@ import { Renderer } from './renderer';
 import { Input } from './input';
 import { UI } from './ui';
 import { Audio } from './audio';
-import { LevelStore, downloadLevel } from './level_store';
+import { LevelStore, exportLevel } from './level_store';
 import { Camera, PRESETS, Preset } from './camera';
 import { Game } from './modes';
 import { VisionResult } from './vision';
@@ -35,7 +35,16 @@ requestAnimationFrame(frame);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const note = (s: string) => { $('note').textContent = s; };
 
-$('btn-tilt').addEventListener('click', async () => { const ok = await input.enableOrientation(); note(ok ? 'Phone tilt is on: tilt the phone to roll the ball.' : 'Tilt is not available here. Use the arrow keys.'); });
+$('btn-tilt').addEventListener('click', async () => {
+  const ok = await input.enableOrientation();
+  note(ok ? 'Phone tilt is on: tilt the phone to roll the ball.' : 'Tilt is not available here. Use the arrow keys or the on-screen arrows.');
+  if (ok) setTimeout(() => { if (!input.orientationActive) note('No tilt sensor answered here. Use the arrow keys or the on-screen arrows.'); }, 1500);
+});
+// on-screen tilt arrows: hold to roll (touch devices without a sensor, and hosted pages where the sensor is blocked)
+for (const [id, dir] of [['btn-left', -1], ['btn-right', 1]] as const) {
+  const b = $(id); const on = (e: Event) => { e.preventDefault(); input.setVirtualTilt(dir); }; const off = () => input.setVirtualTilt(0);
+  b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointerleave', off); b.addEventListener('pointercancel', off);
+}
 $('btn-webcam').addEventListener('click', async () => { const ok = await cam.startWebcam(); note(ok ? 'Webcam on. Hold the printed template up (or lean it on something) about 40 cm away.' : 'No webcam available. Try Upload photo or Demo photo.'); if (ok) game.openCheck(); });
 $<HTMLInputElement>('file-photo').addEventListener('change', async (e) => {
   const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return;
@@ -51,7 +60,7 @@ $('btn-demo').addEventListener('click', () => {
 const sel = $<HTMLSelectElement>('sel-preset');
 sel.innerHTML = PRESETS.map((p) => `<option value="${p.id}">${p.label}</option>`).join('');
 sel.addEventListener('change', () => cam.setPreset(sel.value as Preset));
-$('btn-download').addEventListener('click', () => { game.saveCurrent(); downloadLevel(game.currentLevel()); note('Saved a .scrb level file (the device format). Copy it to the microSD card or load it back here.'); });
+$('btn-download').addEventListener('click', async () => { game.saveCurrent(); note(await exportLevel(game.currentLevel())); });
 $<HTMLInputElement>('file-level').addEventListener('change', async (e) => {
   const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return;
   try {
