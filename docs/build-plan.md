@@ -13,7 +13,7 @@
 
 ```mermaid
 flowchart LR
-    S0["0 Toolchain"] --> S1["1 Screen<br/>and touch"] --> S2["2 Tilt"] --> S3["3 Physics<br/>and Play"] --> S4["4 Finger<br/>drawing"] --> S5["5 Saving<br/>and screens"] --> S6["6 Camera<br/>preview"] --> S7["7 Capture<br/>to level"] --> S8["8 Audio<br/>and polish"] --> S9["9 Playtest<br/>and release"]
+    S0["0 Toolchain"] --> S1["1 Screen<br/>and touch"] --> S2["2 Tilt"] --> S3["3 Physics<br/>and Play"] --> S4["4 Finger<br/>drawing"] --> S5["5 Saving<br/>and screens"] --> S6["6 Camera and<br/>stand-up check"] --> S7["7 Capture<br/>to level"] --> S8["8 Audio<br/>and polish"] --> S9["9 Playtest<br/>and release"]
 ```
 
 ---
@@ -24,9 +24,12 @@ These need no hardware.
 
 - [ ] **Approve the four docs** (this is the review you asked for).
 - [ ] **Build the browser simulator** (after approval): finger/mouse drawing, arrow-key tilt, `.scrb` download, plus **Upload photo / Webcam** running the same vision pipeline.
-- [ ] **Make a paper test set:** draw **10 levels** with a fat black crayon/marker plus red and blue (some simple, some messy, one on the back of a crumpled page). Photograph each with a phone in **3 lights** (daylight, lamp, dim) → ~30 photos. Keep them in `shared/golden/photos/`.
-- [ ] **Tune vision in the simulator** until ≥ 80 % of the test set gives a level you'd happily play. This gives us the real default parameters before the camera even arrives.
-- [ ] **Print the "crayon guide"** (do / don't, from [game-design §3.1](game-design.md#31-paper-mode-the-headline-feature)) and gather: **fat crayons or markers** (black, red, blue), **white paper**, a **desk lamp**, a **microSD card**, a **USB-C data cable**, and something to **prop the device** up (a phone stand).
+- [ ] **Print the template** ([assets/scribble-run-level-template-a4.pdf](assets/scribble-run-level-template-a4.pdf)) at **100 % / Actual size** on white A4 and **measure the 10 cm line** with a ruler (it must read 10.0 cm ±1 mm). Print 10 copies. (Regenerate with `python3 tools/template/make_template.py` if you change anything.)
+- [ ] **Make a paper test set:** draw **10 levels** on the template with a fat black marker/crayon plus red and blue (some simple, some messy, one with a mark smudged). Photograph each with a phone, **landscape, from about 40 cm**, in **3 lights** (daylight, lamp, dim), some **tilted 10–20°** → about 30 photos. Keep them in `shared/golden/photos/`.
+- [ ] **Tune vision in the simulator** until ≥ 80 % of the test set gives a level you'd happily play, and the four marks are found in ≥ 95 % of the photos. This gives us the default parameters before the camera even arrives.
+- [ ] **Record the countdown voice:** "three", "two", "one", "snap!" (about 0.5 s each, a quiet room, a phone is fine), saved as 16 kHz mono WAV in `shared/audio/` (CC0). Or let the kids do it.
+- [ ] **Make a paper holder:** a clipboard or a sheet of stiff card, leaned against a stack of books, and a **40 cm string** to measure the distance.
+- [ ] **Gather:** **fat crayons or markers** (black, red, blue; lines ≥ 3 mm), **white paper**, a **desk lamp**, a **microSD card**, a **USB-C data cable**, a **ruler**, and something to **stand the device** on (its DinBase, or a small phone stand).
 - [ ] **Install PlatformIO** and make sure Step 0 builds (below).
 
 ---
@@ -162,54 +165,60 @@ These need no hardware.
 
 ---
 
-## Step 6 — Camera preview
+## Step 6 — Camera and the stand-up check
 
-**Goal:** a good live camera preview with a framing guide, and real numbers for how the camera sees paper.
+**Goal:** the device stands up, sees the printed template, and tells us (with four lights) whether the paper is in the right place. Also: **confirm the camera facts** that the whole paper mode rests on.
 
 **Tasks**
-1. Bring up the GC0308 through `esp32-camera` with M5Unified running (pins from M5's CoreS3 camera example); QVGA, RGB565, 2 frame buffers in PSRAM.
-2. Show the live frame **cropped to 320×192** with the framing guide; **un-mirrored** (check `hmirror`/`vflip`).
-3. Exposure: let auto-exposure settle, then **lock exposure and white balance**; try `AE_LEVEL` biases.
-4. Live **brightness check** → the lamp hint.
-5. Measure: **frames per second**, **focus range** (closest sharp distance), **field of view** (how far away must an A4 / A5 page be to fill the guide?), and white-paper pixel values in 3 lights.
-6. Print a small "hold the paper this far away" cue on the guide card; record in `hardware-notes.md`.
-7. Camera start/stop when entering/leaving the screen (no leaks; no touch-screen glitches while the camera runs).
+1. Bring up the GC0308 through `esp32-camera` with M5Unified running (pins from M5's CoreS3 camera example); **VGA RGB565**, 2 frame buffers in PSRAM. Check orientation (`hmirror`/`vflip`) so the preview is **not mirrored**.
+2. **Stand the device up** (DinBase or a stand) and read the **accelerometer**: record the angle it settles at; make the camera look level at the paper.
+3. The **Camera check screen**: preview sampled down to 256 × 192, target frame, **live mark finder** (the light version of vision stage 1), detected-page outline, the four **lights** (distance, sharp, light, level), the ? chip and the 2-second **numbers overlay**. The **Stand-up guide** screen.
+4. **Calibrate** with the printed template on a board, at **35, 40 and 45 cm** (use the string and ruler), and also **30 and 50 cm**:
+   - read the dot-rectangle width `w` (QVGA px) and compute `f = w × d / 270 mm`; compare with the expected **377 px** and the FOV of **46° × 35°**;
+   - read the **edge width** (sharpness) at each distance to confirm "sharp from about 30 cm";
+   - measure **fps**, mean paper brightness in 3 lights, and the effect of the **exposure lock**;
+   - tilt the board ±10° and ±20° and check the **Level** light and the side ratios.
+5. Write all measured numbers into `docs/hardware-notes.md` and update `shared/constants.json` (`CAM_FOCAL_PX_320`, the green ranges).
+6. Camera start/stop when entering and leaving the screens.
 
 **Test checklist**
-- [ ] Preview runs at ≥ 15 fps (target ≈ 30) with the guide overlay.
-- [ ] Left/right and up/down of the preview match the paper as he sees it.
-- [ ] The paper is sharp at the distance we plan to use; the sharp range is documented.
-- [ ] White paper reads ≥ 200 (of 255) in the **lamp** light after the exposure lock; the lamp hint appears in dim light and vanishes when the lamp is on.
-- [ ] Entering and leaving Camera 50 times: no crash, no memory leak (free heap and PSRAM stay flat).
-- [ ] Touch and IMU still work correctly while the camera is running (I²C is shared).
-- [ ] **Ergonomics test with your son:** can he hold the paper and tap Snap? Try: device leaning on a stand + one hand for paper; and you tapping Snap while he holds the paper. Decide whether the self-timer is needed.
-- [ ] Battery drain in Camera mode recorded (% per 5 minutes).
+- [ ] Preview runs at ≥ 10 fps (target 15–30) with the overlays.
+- [ ] The preview is **not mirrored** (a word on the paper reads correctly) and upright.
+- [ ] The printed template's **10 cm line measures 10 cm** before you start (scale check).
+- [ ] With the sheet at 35, 40 and 45 cm the four marks are **inside the frame and found**; the **estimated distance is within ±5 %** of the ruler (otherwise the focal length is recalibrated).
+- [ ] Sharpness is "green" at 35–45 cm; a fingerprint on the lens turns **Sharp** yellow/red and wiping fixes it.
+- [ ] **Distance** goes yellow/red with the right arrow at 30 cm and at 55 cm; **Level** reacts to a tilted board; **Light** reacts to dimming the room and to lamp glare.
+- [ ] The device standing on its base or stand looks level (the **Level** light is green by default); lying flat shows the "stand me up" picture.
+- [ ] Entering and leaving the Camera screens 50 times: no crash, free heap and PSRAM stay flat; touch and IMU keep working with the camera running (shared I²C).
+- [ ] **Ergonomics with your son:** where does the paper go (a parent holding it, a clipboard leaned on books, taped to a wall)? Can he press **GO** and step away in time? Record what works.
+- [ ] Battery drain in the Camera screens recorded (% per 5 minutes).
 
 ---
 
 ## Step 7 — Capture to level
 
-**Goal:** snap a crayon drawing and get a playable level.
+**Goal:** the full flow: **GO → "3, 2, 1, snap!" → Review → Play**, with the page found and straightened.
 
 **Tasks**
-1. Port `vision.cpp` from the simulator; run the **golden vision tests** on the PC (the photos in `shared/golden/photos/` converted to 320×240 RGB565 must give **byte-identical** masks to the simulator).
-2. The **Snap** flow: shutter click, white flash, frozen frame, frame averaging, the `Processing` animation while the vision task runs on core 0.
-3. The **Review** screen: dimmed photo + coloured materials, pins, legend, **Retake**, **− / + ink**, **Looks good**.
-4. Quality statuses and the automatic single retry ([system-design §5.7](system-design.md#57-limits-and-fallbacks)); friendly pictures for each status.
+1. Port `vision.cpp` from the simulator, including **mark finding, the homography and the warp**; run the **golden vision tests** on the PC (the marks within ≤ 0.1 px and ≥ 99.5 % of mask pixels identical; stages 3–10 byte-identical).
+2. The **Countdown screen** and sequence: lock exposure and white balance, play the four clips (placeholder tones if the clips aren't ready), take the frame at "snap" (average 3 VGA frames), then flash.
+3. The **Processing** animation while the vision task runs on core 0; the **Review** screen (straightened page, materials, pins, legend, Retake, thinner/thicker ink, Looks good).
+4. Quality statuses and the automatic single retry ([system-design §5.8](system-design.md#58-limits-and-fallbacks)); friendly pictures for each; the **marks-not-found** fallback (centre-crop) and the "paper not found" picture.
 5. Re-tune the parameters on **real camera captures** of the paper test set (not just phone photos) and write the final defaults back to `constants.json` (and the simulator).
-6. Look at the failure cases on the device and decide whether auto-deskew is needed for v1.
+6. Look at the failure cases and decide whether anything beyond the corner marks is needed for v1.
 
 **Test checklist**
-- [ ] Golden vision tests pass on the PC: masks match the simulator **byte for byte**.
-- [ ] Snap → Review in **≤ 0.6 s** (measure stages and record).
-- [ ] **Real-world success rate:** with the 10 test drawings × 3 lights, **≥ 80 %** give a level that is playable without Edit (or fixable in < 1 minute). Record the table.
-- [ ] Black, red, blue are correctly classified; yellow/pencil are ignored without breaking anything.
+- [ ] Golden vision tests pass on the PC (tolerances above).
+- [ ] The four marks are found in **≥ 95 %** of 40 captures across 3 lights and tilts of 0–20°; the ring identifies the top-left even if the sheet is held **upside down or sideways**.
+- [ ] A page tilted **15–20°** still gives a straight level (the straightened preview in Review shows an undistorted drawing).
+- [ ] **GO → Review in about 4 s** (3.3 s countdown + ≤ 0.8 s processing); each vision stage timed and recorded.
+- [ ] **Real-world success rate:** with the 10 test drawings × 3 lights, **≥ 80 %** give a level playable without Edit (or fixable in < 1 minute). Record the table.
+- [ ] Black, red and blue are classified correctly; yellow and pencil are ignored harmlessly; the legend and footer printed on the template are ignored.
+- [ ] A smudged or covered mark falls back to the centre-crop with the "paper not found" picture; **Retake** works.
 - [ ] Start and Flag land on ground in ≥ 80 % of captures and are draggable.
-- [ ] − / + ink re-runs in ≤ 0.3 s and visibly changes the result.
-- [ ] Each bad-photo status shows its friendly picture; **Looks good** and **Retake** always work; **Edit** repairs a bad level.
-- [ ] A paper level is saved with the "from paper" flag and a thumbnail, and plays correctly.
-- [ ] Heap/PSRAM return to baseline after leaving Review (workspace freed).
-- [ ] **Your son draws three levels on paper and plays them** with no help from you; note where he hesitates.
+- [ ] The countdown works with sound **Off** (digits and flash only), and with the device gently tapped at GO (the 3 s settle time is enough: the picture is sharp).
+- [ ] Heap and PSRAM return to baseline after leaving Review.
+- [ ] **Your son draws three levels on the template and plays them** with no help beyond setting the device up; note where he hesitates.
 
 ---
 
@@ -218,7 +227,7 @@ These need no hardware.
 **Goal:** everything feels good, with no vibration to lean on.
 
 **Tasks**
-1. `audio` task and tone queue; the full effects table in [game-design §7](game-design.md#7-feedback-win-lose-and-everything-in-between-no-vibration) (jump, land, bounce, pop, fall, respawn, win jingle, shutter, ta-da, hmm).
+1. `audio` task and tone queue; the full effects table in [game-design §7](game-design.md#7-feedback-win-lose-and-everything-in-between-no-vibration) (jump, land, bounce, pop, fall, respawn, win jingle, shutter, ta-da, hmm), and **speech-clip playback** for the countdown. A small **voice recorder** (the two microphones) lets the kids record their own "3, 2, 1, snap!" to replace the default clips.
 2. Screen effects: ball squash/stretch, particles (pool of 32), screen shake, red/green flashes, paper-wipe transitions, review recolour animation.
 3. Volume Off/Low/Med; default Low; the speaker icon states.
 4. Idle screen dim (60 s) and wake; battery icon below 20 %.
@@ -227,7 +236,8 @@ These need no hardware.
 
 **Test checklist**
 - [ ] Each event has its sound **and** its screen effect, and nothing sounds harsh at Low volume.
-- [ ] Sounds never block or stutter the 60 fps loop.
+- [ ] Sounds never block or stutter the 60 fps loop; the four countdown clips are one second apart (±30 ms).
+- [ ] Recording a new countdown voice works, replaces the clips, and survives a reboot; the defaults can be restored.
 - [ ] Mute works from Title and menu and persists across reboots.
 - [ ] Camera failure leaves the rest of the game fully working.
 - [ ] 1-hour soak: no crash, no memory growth, frame time stays within budget.

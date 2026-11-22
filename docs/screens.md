@@ -83,7 +83,7 @@
 | Demo scene | y 112 – 176 | A ball rolls up a hill, jumps a gap, reaches a flag, loops. |
 | 🔊 chip | top-right, 48×48 | Cycles Off → Low → Med. Also shows a battery icon next to it when < 20 %. |
 | **Levels** tile | x 0–71, y 192 | 2×2 grid icon → Level picker. |
-| **Paper** tile | x 72–151 | Camera icon → New level via camera (goes straight to the Camera screen). |
+| **Paper** tile | x 72–151 | Camera icon → paper mode: the **Stand-up guide** the first time, the **Camera check** after that (§4). |
 | **Play** tile (green, biggest) | x 152–239 | Continues the last level in Play. First run (no saved progress): opens the **starter level in Draw** with the ghost finger. |
 | **Draw** tile | x 240–319 | Pencil icon → a new blank level in the first empty slot, in Draw. |
 
@@ -176,57 +176,162 @@ Tap a **filled** slot → opens it in **Play**. Thumbnails come from the level f
 +--------------------------------------------------------------------------------+
 ```
 
-Shown when he taps an empty slot, or **New level** on the Win screen. Two huge buttons, each 136 × 136 px: **Paper** (camera + crayon icon) and **Draw** (pencil + finger icon). Top bar: **←** back, no right-hand action.
+Shown when he taps an empty slot, or **New level** on the Win screen. Two huge buttons, each 136 × 136 px: **Paper** (sheet + camera icon → §4) and **Draw** (pencil + finger icon). Top bar: **←** back, no right-hand action.
 
 ---
 
-## 4. Camera capture (Paper mode)
+## 4. Camera: "stand it up" (three screens)
+
+**Why a different flow.** The CoreS3's camera faces the **same way as the screen**, so whoever holds the paper **cannot see the preview**. So paper mode is built around a **standing device**: the device stands upright on its base, the paper (the printed A4 template, drawn on) faces it about **40 cm** away, and a tap starts a **spoken "3, 2, 1, snap!" countdown**. The four corner marks on the template let the camera find the page and straighten it ([system-design §5](system-design.md#5-the-vision-pipeline-paper-mode)). The template PDF is [assets/scribble-run-level-template-a4.pdf](assets/scribble-run-level-template-a4.pdf).
+
+**Design target** (camera facts to be confirmed on the device): GC0308, fixed focus, sharp from ≈ 30 cm to 5 m, field of view ≈ 46° × 35° (58° diagonal). An **A4 sheet in landscape at 35–45 cm** (sweet spot **40 cm**), lines **≥ 3 mm** thick.
+
+### 4.1 Stand-up guide (first time, or via the ? chip)
 
 ```text
 +--------------------------------------------------------------------------------+
-|+----------+          .          .          .          .          .          .  |
-|| .        | .          .          .          .          .          .          .|
-||   .<-    |   .          .          .          .          .          .         |
-||   BACK   |     .          .          .          .          .          .       |
-||       .  |       .          .          .          .          .          .     |
-|+----------+         .          .          .          .          .          .   |
-| .          .          .          .          .          .          .          . |
-|   .  +::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::+      |
-|     .:         .          .          .          .          .          . :      |
-|      :.          .          .          .          .          .          :      |
-|      :  .          .          .          .          .          .        : .    |
-|.     :    .          .          .          .          .          .      :   .  |
-|  .   :      .          .          .          .          .          .    :     .|
-|    . :        .       keep the drawing inside the dashes  .          .  :      |
-|      :          .       paper flat, facing the screen       .          .:      |
-|      : .          .          .          .          .          .         :.     |
-|      :   .          .          .          .          .          .       :  .   |
-| .    :     .          .          .          .          .          .     :    . |
-|   .  :       .          .          .          .          .          .   :      |
-|     .:         .          .          .          .          .          . :      |
-|      :.          .          .          .          .          .          :      |
-|      +::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::+ .    |
-|.          .          .          .          .          .          .          .  |
-|  .          .          .          .          .          .          .          .|
+|+----------+                                                                    |
+||          |                                                                    |
+||    <-    |                      HOW TO SNAP                                   |
+||   BACK   |                                                                    |
+||          |                                                                    |
+|+----------+====================================================================|
+|                                                                                |
+|                                                                                |
+|  +-----------------------+ +-----------------------+ +-----------------------+ |
+|  |    1  STAND IT UP     | |   2  PAPER FACES IT   | |       3  TAP GO       | |
+|  |                       | |                    A4 | |                       | |
+|  |                       | |                     | | |                       | |
+|  |       +------+        | | +--+                | | | ####   ####     #     | |
+|  |       |      |        | | |  |                | | |     #      #   ##     | |
+|  |       | [..] |        | | |()|  <-- 40 cm --> | | |  ###    ###     #     | |
+|  |       +--()--+        | | +--+                | | |     #  #        #     | |
+|  |       /______\        | |/____\               | | | ####   #####   ###    | |
+|  |                       | |                     | | |                       | |
+|  |     (o) = camera      | |                       | |                       | |
+|  |                       | |paper in front, drawing| |  say 3, 2, 1, SNAP!   | |
+|  |                       | |   facing the device   | |                       | |
+|  |                       | |                       | |                       | |
+|  +-----------------------+ +-----------------------+ +-----------------------+ |
+|                                                                                |
 |================================================================================|
-|            /             |                       ( O )                         |
-|           /_/            |                       ( O )                         |
-|                          |                                                     |
-|           DRAW           |                        SNAP                         |
-|                          |                                                     |
+|                                        |\                                      |
+|                                       | >                                      |
+|                                        |/                                      |
+|                                     READY                                      |
+|                                                                                |
 +--------------------------------------------------------------------------------+
 ```
 
+Three pictures, no words: **1** the device standing on its base (the small lens dot is the camera); **2** the paper facing it, a ruler arrow marked "40 cm" (about one and a half sheets' length away); **3** the big numbers 3-2-1. One big green **Ready** button leads to the Camera check. ← goes back. Shown automatically the first time; afterwards only through **?** on the Camera check.
+
+### 4.2 Camera check (the calibration screen)
+
+```text
++--------------------------------------------------------------------------------+
+|+----------+          .          .          .          .          . +----------+|
+||      |   | .          .          .          .          .          |   |      ||
+||    <-|   |   .          .          .          .          .        | . |?     ||
+||   BACK   |     .          .          .          .          .      |   HELP   ||
+||      |.  |  +(0):::::::::::::::::::::::::::::::::::::::::::(O):+  |   |      ||
+|+----------+  : |---------------------------------------------|  :  +----------+|
+|       |    . : |      .          .          .          .     |  : .    |       |
+|       |      : |        .          .          .          .   |  :   .  |       |
+|       |      : |          .###  ^^^  OO         .          . |  :     .|       |
+|       |      : | .          .          .          .          |  :      |       |
+|       | .    : |   .          .          .          .        | .:      |       |
+|       |   .  : |     .      line the four dots up     .      |  :.     |       |
+|       |     .: |       .          .          .          .    |  :  .   |       |
+|       |      :.|         .          .          .          .  |  :    . |       |
+|       |      : |.          .          .          .          .|  :      |       |
+|       |.     : |  .          .          .          .         |. :      |       |
+|       |  .   : |    .          .          .          .       |  :      |       |
+|       |    . : |      .          .          .          .     |  : .    |       |
+|       |      :(O)-------------------------------------------(O) :   .  |       |
+|       |      +::::::::::::::::::::::::::::::::::::::::::::::::::+     .|       |
+|       |          .          .          .          .          .         |       |
+|       | .          .          .          .          .          .       |       |
+|       |   .          .          .          .          .          .     |       |
+|       |     .          .          .          .          .          .   |       |
+|================================================================================|
+|    <->    |   [+]    |   (*)    |   ~o~    |                |\                 |
+|     v     |    v     |    v     |    !     |                | >                |
+|           |          |          |          |                |/                 |
+|   DIST    |  SHARP   |  LIGHT   |  LEVEL   |                GO                 |
+|           |          |          |          |                                   |
++--------------------------------------------------------------------------------+
+```
+
+Live preview of what the camera sees, with **live framing and focus quality**, so a parent can place the paper (or lean it on something) until everything is green.
+
 | Element | Position (px) | Notes |
 |---------|---------------|-------|
-| Live preview | 0,0 – 319,191 | The camera frame, centre-cropped to 320×192 (exactly what will be captured), **not mirrored** (left/right match the paper). |
-| Framing guide | dashed white rectangle, ink-outlined, 24 px inset | "Keep the drawing inside the dashes." The paper should fill the preview. |
-| ← chip | top-left | Back to the previous screen. |
-| **Lamp hint** | top-centre, only when needed | Appears if the picture is too dark or too bright (from a live brightness check). Never an error: a friendly lamp icon. |
-| **Draw** tile | x 0–103, y 192 | Switch to finger drawing instead. |
-| **Snap** tile (green) | x 104–319, y 192 | Big shutter. Press: click, 80 ms white flash, frozen frame 0.3 s, then the **Review** screen. |
+| Live preview | 256 × 192, centred (x 32–287, y 0–191) | The whole 4:3 camera frame at 0.8×, **not mirrored**. |
+| **Target frame** | dashed white rectangle, ink-outlined | Where the four corner dots should sit; its size is the "right distance" (≈ 254 px wide in the 320×240 frame = 40 cm). |
+| **Detected page** | green outline + four circles | Appears as soon as the four marks are found; circles turn green when seen. The top-left one is a ring. |
+| **Cue arrows** | on the preview | "Closer" / "back" / "tilt" arrows when something is off. |
+| ← chip | top-left | Back. |
+| **?** chip | top-right | Opens the Stand-up guide. **Hold 2 s** shows the numbers overlay (distance in cm, edge width in px, brightness, tilt, FPS) used for calibration (Step 6). |
+| 4 status lights | bottom bar, 44 × 48 each | **Distance** (ruler with arrows), **Sharp** (focus brackets), **Light** (bulb), **Level** (tilt bubble). Each is green, yellow or red. Display only. |
+| **GO** | x 176–319, y 192 | Starts the countdown. Always enabled; **green and pulsing when all four lights are green**, otherwise yellow. |
 
-Optional **self-timer** (stretch): a long press on Snap starts a 3-2-1 countdown so he can hold the paper with both hands.
+**What each light measures** (all from the four corner marks, so it needs no extra hardware; thresholds are starting values to tune in Step 6):
+
+| Light | Measured as | Green | Yellow / red cue |
+|-------|-------------|-------|------------------|
+| **Distance** | Width of the dot rectangle in the 320×240 frame: 270 mm ÷ (width ÷ focal length) | 226–291 px ≈ **45–35 cm** | Smaller: "move closer" arrow. Larger or dots near the frame edge: "move back" arrow |
+| **Sharp** | Edge sharpness of the dots: 10–90 % edge width in px | ≤ 2.0 px | 2–3 px yellow, > 3 px red: "wipe the lens" (fingerprints!) or paper moving |
+| **Light** | Mean paper brightness inside the page, share of clipped pixels, black-dot contrast | brightness 140–245, clipping < 3 %, contrast ≥ 100 | Lamp icon "more light" / "less glare" |
+| **Level** | Ratio of opposite sides of the page quad (perspective), and the device's own tilt from the accelerometer | side ratio 0.84–1.19 (≈ ±15°) and the device is upright | Tilt arrow; a "stand me up" picture if the device is lying flat |
+
+If the four marks are **not found**, the page outline is absent, the lights are grey, and a friendly "where's my paper?" picture shows. **GO still works** (the capture falls back to the whole frame centre-cropped, flagged on the Review screen).
+
+### 4.3 Countdown and snap
+
+```text
++--------------------------------------------------------------------------------+
+|+----------+.  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |
+|| .  .  .  |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  |
+||.  .<-.  .| .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .|
+||  .STOP . |.  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |
+|| .  .  .  |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  |
+|+----------+ .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .|
+|.  .  .  .  .  .  .  .  .  .  ################  .  .  .  .  .  .  .  .  .  .  . |
+|  .  .  .  .  .  .  .  .  .  .################ .  .  .  .  .  .  .  .  .  .  .  |
+| .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ####  .  .  .  .  .  .  .  .  .  .|
+|.  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .#### .  .  .  .  .  .  .  .  .  . |
+|  .  .  .  .  .  .  .  .  .  .  . ############ .  .  .  .  .  .  .  .  .  .  .  |
+| .  .  .  .  .  .  .  .  .  .  .  ############.  .  .  .  .  .  .  .  .  .  .  .|
+|.  .  .  .  .  .  .  .  .  .  ####  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |
+|  .  .  .  .  .  .  .  .  .  .#### .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  |
+| .  .  .  .  .  .  .  .  .  . ####################  .  .  .  .  .  .  .  .  .  .|
+|.  .  .  .  .  .  .  .  .  .  #################### .  .  .  .  .  .  .  .  .  . |
+|  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  |
+| .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .|
+|.  .  .  .  .  .  .  .  .  .  .  .  .  (o).  .  .  .  .  .  .  .  .  .  .  .  . |
+|  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  |
+| .  .  .  .  .  .  .  .  .  .  .  .  o  o  o  .  .  .  .  .  .  .  .  .  .  .  .|
+|.  .  .  .  .  .  .  .  .  .  .  3  2  1  SNAP! .  .  .  .  .  .  .  .  .  .  . |
+|  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  |
+| .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .|
+|================================================================================|
+|                        [picture: paper up, hands away]                         |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
++--------------------------------------------------------------------------------+
+```
+
+| Element | Notes |
+|---------|-------|
+| Giant digit **3 → 2 → 1** | One per second, each spoken (**"three", "two", "one"**), then **"snap!"**. The ball bounces on each beat. The preview is dimmed behind. |
+| Exposure and white balance | **Locked** when the countdown starts, so the capture matches the check. |
+| ← **Stop** chip | Cancels and returns to the Camera check. |
+| **Snap** | At "snap!" the camera averages 3 frames (the device is standing still), a shutter click sounds, the screen flashes white *after* the frame is taken, then the Review screen appears (≈ 0.5 s of "processing" sparkle in between). |
+| Sound off | The countdown is still shown (digits, flash); only the voice is silent. |
+
+If the page can't be found at the moment of capture, the Review screen shows the centre-cropped result with a friendly "paper not found" picture and **Retake** pulses (never an error message).
 
 ---
 
@@ -269,15 +374,15 @@ Optional **self-timer** (stretch): a long press on Snap starts a 3-2-1 countdown
 
 | Element | Position (px) | Notes |
 |---------|---------------|-------|
-| Playfield | 0,0 – 319,191 | The photo **dimmed to ~35 %**, with the detected materials drawn on top in their real colours and textures: **black** ground, **red** spikes, **blue** bouncy. |
+| Playfield | 0,0 – 319,191 | The **straightened page** (the area inside the dashed box, warped to 320×192) **dimmed to ~35 %**, with the detected materials drawn on top in their real colours and textures: **black** ground, **red** spikes, **blue** bouncy. |
 | Pins | on the playfield | **Start** (ball with ring) and **Flag**, auto-placed; drag to move. |
 | Legend chip | top-centre | Three swatches (black / red / blue) so he can compare with what he drew. |
 | ← chip | top-left | Same as **Retake**. |
-| **Retake** | x 0–63, y 192 | Back to the Camera. |
+| **Retake** | x 0–63, y 192 | Back to the **Camera check**. |
 | **− ink / + ink** | x 64–191 | Less / more ink detected (re-runs the threshold on the stored photo, < 0.3 s). Icons: a thinner/thicker pen. |
 | **Looks good** (green) | x 192–319 | Saves the level (thumbnail included) and goes to **Play**. |
 
-If detection looks poor, **Retake** pulses and a gentle paper-with-question icon appears; **Looks good** is still allowed (he can always fix it in Edit). The fallback rules are in [system-design §5.7](system-design.md#57-limits-and-fallbacks).
+If detection looks poor (or the corner marks were not found, so the capture was only centre-cropped), **Retake** pulses and a gentle paper-with-question icon appears; **Looks good** is still allowed (he can always fix it in Edit). The fallback rules are in [system-design §5.8](system-design.md#58-limits-and-fallbacks).
 
 ---
 
@@ -537,7 +642,9 @@ No top bar here (nobody is tilting, so accidental presses are not a concern; all
 | Title | — | 🔊 sound | Levels · Paper · **Play** · Draw |
 | Level picker | Title | 🗑 delete mode | — (grid fills the screen) |
 | New level | Level picker | — | — (two big buttons) |
-| Camera | previous screen | — | Draw · **Snap** |
+| Stand-up guide | Title / chooser | — | **Ready** |
+| Camera check | Title / chooser | ? help (hold: numbers) | Distance · Sharp · Light · Level (lights) · **GO** |
+| Countdown | Stop (to Camera check) | — | — |
 | Review | Retake | — | Retake · − ink · + ink · **Looks good** |
 | Draw / Edit | Level picker (saves) | ☰ menu | Ground · Spike · Bouncy · Eraser · Undo · **▶ Play** |
 | Play | **Edit** (hold) | ☰ menu | Restart (hold) · **Jump** |
@@ -553,7 +660,8 @@ flowchart TD
     Boot([Power on]) --> Title
 
     Title -->|"Levels"| Picker
-    Title -->|"Paper"| Camera
+    Title -->|"Paper, first time"| StandUp["Stand-up guide"]
+    Title -->|"Paper, later"| Check["Camera check"]
     Title -->|"Draw"| Draw
     Title -->|"Play, returning"| Play
     Title -->|"Play, first run"| Draw
@@ -561,14 +669,17 @@ flowchart TD
     Picker -->|"filled slot"| Play
     Picker -->|"empty slot"| Chooser["New level"]
     Picker -->|"back"| Title
-    Chooser -->|"Paper"| Camera
+    Chooser -->|"Paper"| Check
     Chooser -->|"Draw"| Draw
     Chooser -->|"back"| Picker
 
-    Camera -->|"Snap"| Review
-    Camera -->|"Draw tile"| Draw
-    Camera -->|"back"| Title
-    Review -->|"Retake"| Camera
+    StandUp -->|"Ready"| Check
+    Check -->|"help"| StandUp
+    Check -->|"GO"| Countdown["3 2 1 snap"]
+    Check -->|"back"| Title
+    Countdown -->|"stop"| Check
+    Countdown -->|"snap"| Review
+    Review -->|"Retake"| Check
     Review -->|"Looks good"| Play
 
     Draw -->|"Play"| Play
@@ -643,7 +754,11 @@ Toolbar icons use shape too: Ground = flat bar, Spike = saw-tooth, Bouncy = spri
 |------|-------|-------|
 | ▶ Play | right-pointing triangle | Title, Draw, Win, menus |
 | ✏ Edit / Draw | slanted pencil | Title, Camera, Chooser, Win, Play ← chip, menus |
-| 📷 Paper / Snap | camera body with a lens circle | Title, Chooser, Camera |
+| 📷 Paper | camera body with a lens circle | Title, Chooser, picker thumbnails |
+| ⇔ Distance | ruler with arrows at both ends | Camera check |
+| ◎ Sharp | four focus brackets around a dot | Camera check |
+| ⌖ Level | a bubble level | Camera check |
+| ？ Help | question mark | Camera check |
 | ↶ Undo | curved arrow left | Draw |
 | ☰ Menu | three bars | top-right chip |
 | ← Back | left arrow | top-left chip |
@@ -653,7 +768,7 @@ Toolbar icons use shape too: Ground = flat bar, Spike = saw-tooth, Bouncy = spri
 | ＋ New | plus | empty slots, Win |
 | 🗑 Delete / Clear | trash can | Picker top bar, Draw menu |
 | 🔊 Sound | speaker with 0 / 1 / 2 arcs | Title, menus |
-| 💡 Lamp | light bulb | Camera (only when the picture is too dark/bright) |
+| 💡 Light | light bulb | Camera check |
 | ± ink | thin / thick pen stroke | Review |
 | ✓ Looks good | check mark | Review |
 
@@ -666,4 +781,4 @@ Toolbar icons use shape too: Ground = flat bar, Spike = saw-tooth, Bouncy = spri
 * Everything that appears **bounces slightly** (overshoot easing 0.2 – 0.4 s).
 * Screen changes are a quick **paper-wipe** (≈ 150 ms).
 * Particles are a fixed pool (max 32), 2–4 px squares/circles in palette colours.
-* Camera: white flash 80 ms on Snap; Review recolours materials in one at a time (ground, then spikes, then bouncy) for the "it understood me" moment.
+* Camera: the digits 3-2-1 bounce in with the voice; the white flash comes *after* the frame is captured; Review recolours materials in one at a time (ground, then spikes, then bouncy) for the "it understood me" moment.

@@ -12,7 +12,7 @@
 | MCU | ESP32-S3, dual core, 240 MHz, single-precision FPU | `float` physics is fine; use core 0 for camera/vision, core 1 for the game loop |
 | Memory | 512 KB SRAM (about 250–300 KB usable by us), **8 MB PSRAM**, **16 MB flash** | Big buffers (sprites, camera frames, vision workspace) live in PSRAM; hot data (level layers) in SRAM |
 | Screen | 2.0″ IPS 320×240, ILI9342C over SPI, capacitive touch (single touch reliable) | A full-screen push is ~31 ms at 40 MHz SPI (**to be measured**), so Play repaints only changed rectangles |
-| Camera | GC0308, **0.3 MP** (a retailer listing says "30 megapixels"; that is a typo for 30W = 300,000 pixels), front-facing, below the screen | QVGA (320×240) frames; fixed focus, small field of view (**both to be measured**) |
+| Camera | GC0308, **0.3 MP** (a retailer listing says "30 megapixels"; that is a typo for 30W = 300,000 pixels), below the screen, **faces the same way as the screen**. Fixed focus, sharp from ≈ **30 cm to 5 m**; field of view ≈ **46° × 35°** (58° diagonal) (**to be confirmed on the device**) | VGA (640×480) stills, QVGA preview; nobody holding the paper can see the preview, so the device **stands up** and counts down aloud |
 | IMU | BMI270 accelerometer + gyro (+ BMM150 magnetometer, unused) | Tilt = accelerometer X axis; read through M5Unified's `M5.Imu` |
 | Audio | AW88298 amplifier, 1 W speaker | Synthesised tones, no audio files in v1 |
 | Storage | LittleFS in flash, optional microSD | Levels in LittleFS; microSD for export/import |
@@ -38,11 +38,11 @@
 | **config** | core | All constants (physics, layout, palette, vision parameters) from one shared file. |
 | **level** | core | The `Level` struct, 1-bit layer helpers (`getBit`, `setBit`, brush stamping), the `.scrb` encoder/decoder (bytes ↔ struct), thumbnail generation. No file I/O. |
 | **physics** | core | Fixed-step ball simulation, collision, events. Pure function of `(World, Level, StepInput)`. |
-| **vision** | core | Camera frame → `Level`: crop, grayscale/HSV, background-normalised threshold, colour classification, clean-up, pin placement, quality report. |
+| **vision** | core | Camera frame → `Level`: **find the four corner marks, straighten the page (homography)**, grayscale/HSV, background-normalised threshold, colour classification, clean-up, pin placement, quality report. Also the **live Camera check** (distance, sharpness, light, tilt). |
 | **input** | platform | Reads touch and IMU, produces one `InputState` per tick (edge-detected touch, filtered tilt, grip-safe rules). |
-| **camera** | platform | Starts/stops the sensor, delivers RGB565 QVGA frames, locks exposure/white balance, averages frames at capture. |
+| **camera** | platform | Starts/stops the sensor, delivers RGB565 **VGA** frames (and a down-sampled preview), **locks exposure and white balance** at the countdown, averages frames at capture. |
 | **renderer** | platform | Owns the scene sprite and frame sprites, dirty rectangles, camera-preview blit, screen transitions, particles. |
-| **audio** | platform | Plays tones from a small fixed queue on its own task (non-blocking). |
+| **audio** | platform | Plays synthesised tones **and small speech clips** (the spoken countdown) from a fixed queue on its own task (non-blocking). |
 | **level_store** | platform | LittleFS and microSD I/O: list/load/save/delete, autosave, thumbnail cache, settings, atomic writes. |
 | **ui** | app | Widgets (button, chip, tab bar, ring-fill hold button, slot grid), icon drawing, hit-testing, hold gestures. |
 | **modes** | app | The state machine and per-screen logic (Title … Win). The only module that knows about all the others. |
@@ -96,17 +96,21 @@ struct Touch  { bool down, pressed, released; int16_t x, y; uint16_t heldMs; };
 struct InputState { Touch touch; float tilt /* -1..1, filtered */; };
 
 // ---- camera.h : runs in its own task --------------------------------------
-struct Frame { const uint16_t* rgb565; int w /*320*/, h /*240*/; };
+struct Frame { const uint16_t* rgb565; int w /*640*/, h /*480*/; };
 bool  camera_start();             void camera_stop();
-bool  camera_latest(Frame& f);    // newest preview frame, no copy
-bool  camera_snap(uint16_t* dst); // averages FRAME_AVG frames into dst (320*240)
+bool  camera_latest(Frame& f);    // newest frame, no copy (preview samples it down)
+void  camera_lock_exposure(bool); // at countdown start
+bool  camera_snap(uint16_t* dst); // averages FRAME_AVG frames into dst (640*480)
 
 // ---- vision.h : pure, deterministic ---------------------------------------
 struct VisionParams { /* thresholds, §5.3 */ };
 struct VisionReport { uint8_t status; /* OK, TOO_DARK, EMPTY, TOO_MUCH_INK, NOISY */
                       float inkCover, bgMean; uint16_t blobs; };
-void vision_process(const uint16_t* rgb565, const VisionParams&,
-                    VisionWork& work, Level& out, VisionReport& rep);
+struct LiveCheck { bool marks; float distCm, edgePx, brightness, clipFrac, sideRatioH, sideRatioV;
+                   uint8_t light[4]; /* distance, sharp, light, level: 0 grey, 1 red, 2 yellow, 3 green */ };
+void vision_live_check(const uint8_t* gray320x240, LiveCheck&);   // ~8 Hz on the preview
+void vision_process(const uint16_t* vga565, const VisionParams&,
+                    VisionWork& work, Level& out, VisionReport& rep);   // marks → warp → level
 void vision_rethreshold(VisionWork& work, const VisionParams&, Level& out, VisionReport& rep);
 
 // ---- physics.h : pure ------------------------------------------------------
@@ -121,7 +125,8 @@ struct Level { uint8_t ground[7680], spike[7680], bouncy[7680];
                int16_t startX, startY, flagX, flagY; char name[24]; uint32_t rev; };
 bool level_decode(const uint8_t* bytes, size_t n, Level&);      // validates magic, crc, size
 size_t level_encode(const Level&, const Thumb*, uint8_t* out);
-// ---- renderer.h, audio.h, level_store.h : see §6, §4.7
+// ---- audio.h : audio_tone(freq, ms), audio_clip(CLIP_THREE .. CLIP_SNAP), audio_stop()
+// ---- renderer.h, level_store.h : see §6, §4.7
 ```
 
 **Events, not callbacks.** `physics_step` returns a bitmask; `modes` turns it into sound (`audio_play(SFX_JUMP)`), particles (`renderer_burst(...)`) and state changes. The same pattern is used by `vision` (a report struct) and `ui` (button ids returned from `ui_update`).
@@ -131,10 +136,22 @@ size_t level_encode(const Level&, const Thumb*, uint8_t* out);
 | Task | Core | Runs | Priority |
 |------|------|------|----------|
 | `loop` (game) | 1 | input → modes → physics → renderer at 60 Hz | normal |
-| `camera/vision` | 0 | frame grabbing in Preview; `vision_process` after Snap | lower than `loop`, so the UI never stalls |
+| `camera/vision` | 0 | frame grabbing and the live check in Camera check; `vision_process` after Snap | lower than `loop`, so the UI never stalls |
 | `audio` | 0 | tone queue | high but tiny |
 
 `modes` talks to the vision task through two flags (`visionRequested`, `visionDone`) and a shared `VisionWork` buffer; no locks are needed because only one side writes at a time.
+
+### 2.4 Audio assets (the spoken countdown)
+
+The only recorded sounds are four short speech clips for **"three", "two", "one", "snap!"**:
+
+| Item | Value |
+|------|-------|
+| Format | 16 kHz, 16-bit, mono PCM, ≈ 0.5 s each (≈ 16 KB); 64 KB total in LittleFS `/audio/` |
+| Schedule | Clip *n* starts at **t = 0, 1, 2, 3 s**; the frame is taken at **t ≈ 3.2 s** (after "snap!") so the device has settled after the tap; exposure and white balance are locked at t = 0 |
+| Volume | The countdown plays at least at **Low** whenever sound is not **Off**; if Off, only the digits and flash show |
+| Source | **We record them ourselves** (public-domain CC0) so the repo stays MIT-clean; third-party text-to-speech voices are avoided unless their licence allows redistribution |
+| Replaceable | A small tool (build Step 8) records new clips with the two microphones (ES7210) so the kids can use their **own voice** |
 
 ---
 
@@ -158,14 +175,19 @@ stateDiagram-v2
     Chooser --> Picker: back
 
     state Camera {
-        [*] --> Preview
-        Preview --> Frozen: Snap
-        Frozen --> Processing: flash done
+        [*] --> Entry
+        Entry --> StandUp: first time
+        Entry --> Check: afterwards
+        StandUp --> Check: Ready
+        Check --> StandUp: help
+        Check --> Countdown: GO
+        Countdown --> Check: stop
+        Countdown --> Snapping: 3 2 1 done
+        Snapping --> Processing: frame taken
     }
     Camera --> Review: level ready
-    Camera --> Draw: Draw tile
     Camera --> Title: back
-    Review --> Camera: Retake
+    Review --> Camera: Retake (to the check)
     Review --> Play: Looks good
 
     state Draw {
@@ -201,7 +223,8 @@ stateDiagram-v2
 
 * `Menu` remembers `returnTo` (Draw or Play) and the scene is frozen behind it.
 * **Entering Draw** autosaves the previous level; **leaving Draw** (Play, ←, menu→Levels/Home) autosaves the current one (§4.7).
-* `Processing` runs `vision_process` on the vision task; the screen plays a sparkle animation until `visionDone`.
+* **Check** runs `vision_live_check` about 8 times a second; **Countdown** locks exposure and white balance and plays the four speech clips one second apart; **Snapping** averages `FRAME_AVG` frames (the device is standing still), then the screen flashes.
+* `Processing` runs `vision_process` on the vision task; the screen plays a sparkle animation until `visionDone`. If the marks cannot be found, **Processing** still finishes: it centre-crops the frame, and **Review** shows that result flagged `MARKS_MISSING` with a gentle "paper not found" picture while **Retake** pulses (so a hand-drawn sheet without marks still works).
 * Every transition goes through `modes_goto(State)` which runs the old state's `exit()`, then the new state's `enter()`, so resources (camera, sprites) are started and stopped in exactly one place.
 
 ---
@@ -311,120 +334,180 @@ The web editor reads and writes either the `.scrb` bytes directly (preferred; a 
 
 ## 5. The vision pipeline (paper mode)
 
-**Goal:** a QVGA photo of crayon on white paper → a `Level` (three bit layers + Start + Flag + quality report), in well under a second, with parameters we can tune from the Review screen, and a graceful path when the photo is bad.
+**Goal:** a photo of a crayon drawing on the **printed level template** → a `Level` (three bit layers + Start + Flag + quality report), in well under a second, even if the page is tilted, with a **live Camera check** beforehand and a graceful path when the photo is bad.
 
-### 5.1 Overview
+Because the camera faces the same way as the screen, the device **stands up**, the sheet faces it, and a parent or a stand holds the paper ([screens.md §4](screens.md#4-camera-stand-it-up-three-screens)). Nobody is holding the device, so frames are steady and can be **averaged**.
+
+### 5.1 The paper template
+
+PDF: [`docs/assets/scribble-run-level-template-a4.pdf`](assets/scribble-run-level-template-a4.pdf), generated by `tools/template/make_template.py` (all numbers below live there and in `shared/constants.json`).
+
+| Item | Value (A4 landscape, mm from the top-left of the sheet) |
+|------|----------------------------------------------------------|
+| Sheet | 297 × 210 |
+| **Corner marks** | Ø 10 mm black. Centres at **(13.5, 24)**, (283.5, 24), (283.5, 186), (13.5, 186) → a **270 × 162 mm "dot rectangle"** (exactly 5 : 3) |
+| **Orientation ring** | The **top-left** mark has a 3.5 mm white hole (a ring); the other three are solid. The camera finds the ring, so the page works even if held upside down or sideways |
+| **Drawing area** | The dot rectangle shrunk to **92 %** about its centre: **248.4 × 149.0 mm** at (24.3, 30.5), shown as a dashed light-grey box (ignored by vision). Mapped onto the **320 × 192 level**: **0.776 mm per level pixel** |
+| Legend | Top margin: black bar = ground, red zig-zag = spikes, blue zig-zag = bouncy (outside the dot rectangle, so ignored) |
+| Footer | The crayon guide, plus a **10 cm line** to check the print scale (the distance light relies on the 270 mm spacing) |
+| Margins | Everything is ≥ 8 mm from the sheet edge (printer-safe) |
+
+**Level coordinates of the marks:** the world is the dot rectangle scaled by 0.92 about its centre (160, 96), so the four mark centres are at **(−13.91, −8.35), (333.91, −8.35), (333.91, 200.35), (−13.91, 200.35)** in level pixels. The marks (radius 6.4 px) lie just outside the 320 × 192 area, so they never become ink.
+
+### 5.2 Camera geometry (what the numbers imply)
+
+GC0308 facts we design to (**to be confirmed on the device in Step 6**): fixed focus, sharp from about **30 cm to 5 m**; field of view about **46° horizontal × 35° vertical** (58° diagonal). From that, the focal length is `f = (width/2) / tan(23°)` = **377 px at 320 wide, 754 px at 640 wide**.
+
+| Distance | Camera sees (W × H) | A4 width fills | Dot rectangle in the 320×240 frame | in a 640×480 frame | A 3 mm line in a 640×480 frame | Verdict |
+|---------:|--------------------:|---------------:|-----------------------------------:|-------------------:|-------------------------------:|---------|
+| 30 cm | 255 × 189 mm | 117 % | 339 px | 678 px | 7.5 px | ✗ marks fall outside the frame |
+| **35 cm** | 297 × 221 mm | 100 % | **291 px** | 582 px | 6.5 px | ✓ nearest allowed (marks have ~8 mm to spare) |
+| **40 cm** | 340 × 252 mm | 87 % | **254 px** | 509 px | 5.7 px | ✓ **sweet spot** |
+| **45 cm** | 382 × 284 mm | 78 % | **226 px** | 452 px | 5.0 px | ✓ farthest recommended |
+| 50 cm | 424 × 315 mm | 70 % | 204 px | 407 px | 4.5 px | works, but thin lines get thinner |
+
+* **Capture at VGA (640 × 480)** so a 3 mm line is ≥ 5 pixels wide before it is shrunk into the 320 × 192 level (QVGA would give only ~2.5 px). The live preview is the same VGA stream sampled down to display size.
+* **Distance estimate** (used by the Distance light): `d = 270 mm × f / (dot-rectangle width in pixels)`. At 254 px in a 320-wide frame this gives 40 cm.
+* **Tilt tolerance:** with a 46° lens, a sheet turned 15° about a vertical axis changes the near/far side lengths by about 19 %. That is why the homography (§5.4, stage 2) is needed, and why the Level light allows ±15° and warns beyond.
+
+### 5.3 Overview
 
 ```mermaid
 flowchart LR
-    A["0 Capture<br/>average 4 QVGA frames"] --> B["1 Crop<br/>centre 320x192"]
-    B --> C["2 Convert<br/>gray, saturation, hue"]
-    C --> D["3 Paper estimate<br/>16 px block max, smoothed"]
-    D --> E["4 Ink strength<br/>and threshold"]
-    E --> F["5 Classify<br/>ground, spike, bouncy"]
-    F --> G["6 Clean up<br/>despeckle, close, thicken"]
-    G --> H["7 Quality check"]
-    H --> I["8 Place Start and Flag"]
-    I --> J["9 Pack layers and thumbnail"]
+    A["0 Capture<br/>VGA, average 3 frames"] --> B["1 Find the four marks<br/>and the ring"]
+    B --> C["2 Straighten<br/>homography and warp<br/>to 320x192"]
+    C --> D["3 Convert<br/>gray, saturation, hue"]
+    D --> E["4 Paper estimate<br/>16 px block max"]
+    E --> F["5 Ink strength<br/>and threshold"]
+    F --> G["6 Classify<br/>ground, spike, bouncy"]
+    G --> H["7 Clean up<br/>despeckle, close, thicken"]
+    H --> I["8 Quality check"]
+    I --> J["9 Place Start and Flag"]
+    J --> K["10 Pack layers<br/>and thumbnail"]
+    B -. "marks not found" .-> L["Fallback:<br/>centre-crop the frame"]
+    L --> D
 ```
 
-All stages are integer maths on small arrays (no OpenCV, no floating point except where noted), identical in C++ and TypeScript, so the browser simulator reproduces the device's result.
+Stages 3–10 are integer maths on small arrays (no OpenCV). The only floating point is solving the homography (stage 2); its result is rounded to 16.16 fixed point before the per-pixel work, so the C++ and TypeScript versions agree to within a pixel.
 
-### 5.2 Step by step
+### 5.4 Step by step
 
 | # | Stage | What it does | Key detail |
 |---|-------|--------------|------------|
-| 0 | **Capture** | Exposure and white balance are *locked* after the preview has settled (≥ 0.5 s), then `FRAME_AVG` (4) consecutive RGB565 frames are averaged per pixel. | Averaging cuts sensor noise about 2×; locking stops the auto-exposure from "breathing" during capture. |
-| 1 | **Crop** | Rows 24 … 215 of the 320×240 frame → **320 × 192**. | It's exactly what the framing guide showed. |
-| 2 | **Convert** | RGB565 → 8-bit R, G, B. `gray = (77R + 150G + 29B) >> 8`. `max`, `min` of RGB. `sat = (max-min)·255 / max` (0 if `max < 16`). `hue` in degrees 0–359 by the standard integer HSV formula. | Pixels are processed in a single pass, row by row. |
-| 3 | **Paper estimate** | Split into 16×16 blocks (20 × 12). `bg[block] = max gray` in the block. Then 3×3 box-blur the 20×12 grid, then **bilinear-upsample** to a per-pixel `bg(x,y)`. | The paper is the brightest thing in any block, so lighting gradients and soft shadows are divided out. A crayon stroke would have to be >16 px thick to fool it. |
-| 4 | **Ink strength** | `ink(x,y) = 255 · (bg − gray) / bg`, clamped 0–255. A pixel is **ink** if `ink ≥ INK_THRESH` (default 30 % → 77). Pixels where `bg < BG_MIN` (80) are never ink. | `BG_MIN` stops a dark table or dark background being read as a huge ground blob. |
-| 5 | **Classify** | For each ink pixel: if `V ≥ COLOR_V_MIN` (80) **and** `sat ≥ SAT_MIN` (90 ≈ 35 %): hue in `[345°, 360°) ∪ [0°, 20°]` → **Spike**; hue in `[195°, 255°]` → **Bouncy**. Everything else (dark or desaturated) → **Ground**. | The `V ≥ 80` test stops very dark pixels with noisy colour from being called blue. Black crayon is dark and nearly colourless → Ground. |
-| 6 | **Clean up** | Per class mask: **(a) despeckle**: connected components smaller than `MIN_BLOB` (30 px) are removed; **(b) close** with a 5×5 square (joins gaps left by waxy, streaky crayon); **(c) thicken** with a `THICKEN_R` (2) dilation so every stroke is ≥ 8 px wide; **(d) border**: zero a 3 px margin (paper edges and shadows); **(e) priority**: where masks overlap, **Spike > Bouncy > Ground**. | Closing before thickening avoids growing noise. Priority makes a red line crossing a black one stay red. |
-| 7 | **Quality check** | Computes ink coverage, blob count, mean paper brightness, and sets a status (§5.7). | Drives the Review screen's hints. |
-| 8 | **Place pins** | **Start:** scan columns x = 16 … 120 left to right for the first column with a solid pixel (Ground/Bouncy) that has ≥ 24 px of clear space above; Start = (x, topY − 8 − 1). Not found → default (32, 32). **Flag:** same from x = 304 down to 200 (right to left); not found → (288, 100). If they end up < 100 px apart, push the Flag to the far right. | Both are draggable on Review. This reads "Start at the left, Flag at the far right" and also puts them on something solid when possible. |
-| 9 | **Pack** | Bit-pack the three masks into `Level`, set `flags.bit2` (from paper), generate the thumbnail. | The output is an ordinary level (§4). |
+| 0 | **Capture** | Exposure and white balance were **locked** when the countdown started. At "snap" the camera grabs and **averages `FRAME_AVG` (3) VGA RGB565 frames**. | Standing still, so averaging cuts sensor noise about 1.7× without blur. |
+| 1 | **Find the marks** | **(a)** Gray (640×480 → 320×240 by 2×2 averaging). **(b)** Adaptive threshold: dark if `gray < MARK_RATIO (0.6) × local mean` over a 21 px box (integral image). **(c)** 4-connected components; keep blobs with area in the expected range (a Ø 10 mm disc is 8–19 px across at 320 wide for 35–50 cm), bounding box aspect 0.8–1.25 and fill ratio 0.55–0.9. **(d)** Pick the best **four** by score: roughly rectangular (angles 90° ± 25°), opposite sides within 25 %, mark areas within 1.6×, overall aspect 5 : 3 (or 3 : 5 if turned sideways) ± 30 %. With ≤ 20 candidates this is ≤ 4,845 combinations. **(e)** Orientation: sample the centre of each mark at full VGA resolution; the one with a **bright centre** (the ring) is **top-left**; order the others clockwise from it. **(f)** Refine each centre to sub-pixel by intensity-weighted centroid in a 40 × 40 VGA window. | Output: four points `P[0..3]` = TL, TR, BR, BL in VGA pixels, plus a confidence. If no ring can be told from a disc, assume the usual orientation and set `ORIENT_GUESS`. If fewer than four marks or no good quad: **marks not found** → fallback below. |
+| 2 | **Straighten** | Solve the **homography** `H` mapping the four points to the four level-pixel mark positions in §5.1 (8 × 8 linear solve, once, in `double`/`float`). For each of the 61,440 level pixels, map its centre through `H⁻¹` (16.16 fixed point) into the VGA frame and **area-sample** it (bilinear on the 2 × 2 neighbours; the 640 → 320 shrink is ~1.6×) → a **320 × 192 RGB565 "straight page"**. | This replaces the old "crop": a tilted, rotated or off-centre page lands exactly on the level grid. |
+| 3 | **Convert** | RGB565 → 8-bit R, G, B. `gray = (77R + 150G + 29B) >> 8`; `max`, `min`; `sat = (max-min)·255 / max` (0 if `max < 16`); `hue` 0–359° by the standard integer HSV formula. | One pass, row by row. |
+| 4 | **Paper estimate** | 16 × 16 blocks (20 × 12). `bg[block]` = max gray in the block; 3 × 3 box-blur the grid; **bilinear-upsample** to a per-pixel `bg(x,y)`. | The paper is the brightest thing in every block, so uneven lighting and soft shadows are divided out. |
+| 5 | **Ink strength** | `ink = 255·(bg − gray)/bg`, clamped. **Ink** if `ink ≥ INK_THRESH` (30 % → 77). Never ink where `bg < BG_MIN` (80). | |
+| 6 | **Classify** | For each ink pixel: if `V ≥ COLOR_V_MIN` (80) **and** `sat ≥ SAT_MIN` (90): hue in `[345°, 360°) ∪ [0°, 20°]` → **Spike**; `[195°, 255°]` → **Bouncy**. Otherwise → **Ground**. | Black crayon is dark and nearly colourless → Ground. |
+| 7 | **Clean up** | Per class: **despeckle** (drop components < `MIN_BLOB` 30 px), **close** 5 × 5 (join streaky wax gaps), **thicken** by `THICKEN_R` (2), zero a 3 px border, **priority Spike > Bouncy > Ground** where masks overlap. | A 3 mm line is ≈ 3.9 level px; thickening by 2 on each side makes it ≈ 8 px, the physics minimum. |
+| 8 | **Quality check** | Ink coverage, blob count, paper brightness, marks status; sets a status (§5.8). | |
+| 9 | **Place pins** | **Start:** scan columns x = 16 … 120 left to right for the first column with a solid pixel with ≥ 24 px of clear space above; Start = (x, top − 9). Not found → (32, 32). **Flag:** same from x = 304 down to 200; not found → (288, 100). If < 100 px apart, push the Flag to the far right. | Both are draggable on Review. |
+| 10 | **Pack** | Bit-pack into `Level`, set `flags.bit2` (from paper), generate the thumbnail. | An ordinary level (§4). |
 
-**Re-thresholding** (Review's **− ink / + ink**): stage 4's `ink` array is kept in memory, so changing `INK_THRESH` re-runs only stages 5–9 (≈ 0.15 s) without touching the camera.
+**Fallback when the marks aren't found** (a hand-drawn sheet, a bad angle, a hand over a corner): skip stages 1–2 and **centre-crop the frame** to 5 : 3 and resample it to 320 × 192, then continue. The report carries `MARKS_MISSING`; Review shows a gentle "paper not found" picture and pulses **Retake**.
 
-### 5.3 Tunable parameters (all in `config`)
+**Re-thresholding** (Review's thinner/thicker ink): stage 5's `ink` array is kept, so only stages 6–10 re-run (≈ 0.15 s) without touching the camera or the page finder.
+
+### 5.5 Tunable parameters (all in `config`)
 
 | Parameter | Default | Range | Meaning |
 |-----------|--------:|-------|---------|
-| `FRAME_AVG` | 4 | 1–8 | Frames averaged at capture |
-| `CROP_ROW0` | 24 | — | First row kept (192 rows) |
-| `BG_BLOCK` | 16 | 8–32 | Paper-estimate block size (px) |
+| `CAM_FOCAL_PX_320` | 377 | — | Focal length for a 320-wide frame; **calibrated in Step 6** (from FOV 46°) |
+| `FRAME_AVG` | 3 | 1–6 | Frames averaged at capture |
+| `MARK_RATIO` | 0.60 | 0.4–0.8 | Dark-mark threshold relative to local mean |
+| `MARK_WINDOW` | 21 px (at 320 wide) | 15–41 | Adaptive-threshold window |
+| `MARK_AREA_MIN/MAX` | 40 / 330 px (at 320 wide) | — | Expected mark size |
+| `QUAD_ANGLE_TOL` | 25° | 10–40 | Allowed deviation from a right angle |
+| `QUAD_ASPECT_TOL` | 30 % | 15–50 | Allowed deviation from 5 : 3 (or 3 : 5) |
+| `AREA_SCALE` | 0.92 | — | Drawing area as a fraction of the dot rectangle (matches the PDF) |
+| `BG_BLOCK` | 16 | 8–32 | Paper-estimate block (level px) |
 | `BG_MIN` | 80 | 40–140 | Darkest paper we accept |
-| `INK_THRESH` | 77 (30 %) | 38–128 | Ink if darker than paper by this much; **the − / + ink buttons move it in steps of 13 (5 %)** |
-| `SAT_MIN` | 90 (35 %) | 60–140 | Saturation needed to count as red or blue |
-| `COLOR_V_MIN` | 80 | 40–140 | Brightness needed for red/blue |
-| `HUE_RED` | 345–20° | — | Spike hue range |
-| `HUE_BLUE` | 195–255° | — | Bouncy hue range |
+| `INK_THRESH` | 77 (30 %) | 38–128 | The thinner/thicker buttons move it by 13 (5 %) |
+| `SAT_MIN`, `COLOR_V_MIN` | 90, 80 | 60–140 | Needed to count as red or blue |
+| `HUE_RED`, `HUE_BLUE` | 345–20°, 195–255° | — | Crayon hues |
 | `MIN_BLOB` | 30 px | 10–100 | Smallest kept component |
-| `CLOSE_R` | 2 | 0–4 | Gap-closing radius |
-| `THICKEN_R` | 2 | 0–4 | Final dilation; strokes end up ≥ 4·`THICKEN_R`+1 wide |
+| `CLOSE_R`, `THICKEN_R` | 2, 2 | 0–4 | Closing radius, final dilation |
 | `EDGE_MARGIN` | 3 px | 0–8 | Zeroed border |
-| `AE_LEVEL` | +1 | −2…+2 | Exposure bias (white paper fools auto-exposure into grey; tuned on device) |
+| `AE_LEVEL` | +1 | −2…+2 | Exposure bias (white paper fools auto-exposure into grey); tuned on device |
 
-### 5.4 Time budget (estimates at 240 MHz; **measured in Step 7**)
+### 5.6 Time and memory budget
+
+**Time** (estimates at 240 MHz; **measured in Step 7**):
 
 | Stage | Estimate | Notes |
 |-------|---------:|-------|
-| 0 Capture + average 4 frames | 130–170 ms | Camera-limited (~30 fps) |
-| 1–2 Crop + convert (61,440 px) | 20–40 ms | PSRAM reads dominate |
-| 3 Paper estimate | 10 ms | |
-| 4–5 Ink + classify | 15 ms | |
-| 6 Clean up (3 masks) | 80–150 ms | Separable 5×5 passes; components via a small stack |
-| 7–9 Quality, pins, pack, thumbnail | 15 ms | |
-| **Total** | **≈ 0.3 – 0.4 s** | Budget **≤ 0.6 s**; a sparkle animation covers it |
+| 0 Capture + average 3 VGA frames | 150–250 ms | Camera-limited |
+| 1 Find the marks (QVGA components + VGA refinement) | 40–80 ms | Integral image + labelling |
+| 2 Homography + warp (61,440 px) | 40–70 ms | PSRAM reads dominate |
+| 3–5 Convert, paper, ink | 30–50 ms | |
+| 6–7 Classify + clean up (3 masks) | 100–180 ms | |
+| 8–10 Quality, pins, pack, thumbnail | 15 ms | |
+| **Total** | **≈ 0.4 – 0.65 s** | Budget **≤ 0.8 s**; a sparkle animation covers it. The countdown itself adds 3.3 s *before* this |
 
-### 5.5 Memory (transient, in PSRAM; freed on leaving Camera/Review)
+**Memory** (transient, in PSRAM, freed on leaving Camera/Review):
 
 | Buffer | Bytes |
 |--------|------:|
-| Averaged QVGA capture (RGB565, 320×240) — shares the camera frame buffer | (153,600, already counted) |
-| Cropped photo kept for the Review background (RGB565 320×192) | 122,880 |
+| Camera frame buffers: 2 × VGA RGB565 (640×480×2) | 1,228,800 |
+| Mark-finding scratch: QVGA gray 76,800 + integral image (u32) 307,200 + component labels (u16) 153,600 | 537,600 |
+| Straightened photo kept for Review (RGB565 320×192) | 122,880 |
 | `ink` strength (u8) | 61,440 |
-| `colour class` (u8: 0 none / 1 red / 2 blue) | 61,440 |
-| `labels` (u8: 0 none / 1 ground / 2 spike / 3 bouncy) | 61,440 |
-| Scratch for morphology | 61,440 |
-| Paper grid (20×12) + tables | < 1,000 |
-| **Vision workspace total** | **≈ 369 KB** |
+| `colour class` (u8) | 61,440 |
+| `labels` (u8: none/ground/spike/bouncy) | 61,440 |
+| Morphology scratch | 61,440 |
+| Paper grid, homography, tables | < 1,000 |
+| **Vision + camera total** | **≈ 2.1 MB** (see §8) |
 
-### 5.6 Where the vision runs
+### 5.7 The live Camera check (the calibration screen)
 
-* On the **vision task (core 0)**, so the UI animates. It is started by `modes` when the state enters `Processing`.
-* In the **simulator** the same `vision.ts` runs on the main thread (or a worker) on an uploaded photo or a webcam frame that has been **resampled to 320×240 and quantised to RGB565**, so the browser sees what the device sees. Test presets in the simulator add "dim light", "gradient shadow", "8° tilt", and "sensor noise".
+The Camera check ([screens.md §4.2](screens.md#42-camera-check-the-calibration-screen)) runs a **light version of stage 1** on the preview, about **8 times a second** on the vision task (QVGA gray, no ring test, no refinement), and turns it into four lights:
 
-### 5.7 Limits and fallbacks
+| Light | Computation | Green | Notes |
+|-------|-------------|-------|-------|
+| **Distance** | `w` = mean of the top and bottom edge lengths of the mark quad (QVGA px); `d = 270 mm × 377 / w` | `w` = 226–291 px (35–45 cm) **and** all four marks ≥ 8 px from the frame edge | Too small → "closer"; too large or a mark near the edge → "back" |
+| **Sharp** | For each mark, the 10–90 % **edge width** across its boundary (average of 16 radial profiles), in QVGA px | ≤ 2.0 px | Dots have a known sharp edge, so this works on any sheet. Yellow 2–3, red > 3 |
+| **Light** | Mean gray of the sheet between the marks (sampled on a 12 × 8 grid inside the quad); fraction of channel values ≥ 250 (clipping); mark-to-paper contrast | mean 140–245, clipping < 3 %, contrast ≥ 100 | Shows a "more light" or "less glare" bulb |
+| **Level** | `r_h` = top / bottom edge lengths, `r_v` = left / right; plus the **accelerometer**: is gravity roughly along the device's vertical axis (standing up)? | `r_h, r_v` within 0.84–1.19 (≈ ±15°) and standing | Warns beyond 0.75–1.33; "stand me up" if lying flat |
+
+**GO** is green and pulses when all four have been green for 0.5 s. It is never disabled.
+
+**Calibrating the camera facts on the device (Step 6).** Hold-2 s on **?** shows the numbers overlay. Put the printed sheet at **measured** distances (35, 40, 45 cm with a ruler) and note `w`; then `f = w × d / 270 mm` gives the real focal length for the 320-wide frame (replace 377 and re-derive the field of view), and the *Sharp* edge width at each distance confirms the focus range. These values are written back to `shared/constants.json`.
+
+### 5.8 Limits and fallbacks
 
 **Honest limits** (so we don't over-promise to a 7-year-old):
 
 | Problem | What happens | What we do |
 |---------|--------------|------------|
-| **Low resolution** (0.3 MP, ~1 mm per pixel on an A4 page) | Thin lines and small details vanish | Crayon guide ("fat black crayon"); thickening stage; drawing big |
+| **Low resolution** (0.3 MP; ~1 mm per pixel at 40 cm in QVGA, ~0.5 mm in VGA) | Thin lines vanish | Template says "lines ≥ 3 mm"; VGA capture; thickening |
 | **Pencil / light pens** | Too faint | `EMPTY` status → "draw darker" picture |
-| **Pale colours** (yellow, light blue, pink) | Not detected as ink | Documented; only black, red, blue are used |
-| **Poor light** | Low contrast; noisy | Lamp hint; − / + ink; auto-retry (below) |
-| **Shadows** | A soft shadow is divided out by the paper estimate; a *sharp* shadow edge (a hand, the device) can leave a false dark band up to ~16 px wide | Lamp hint; Retake; fix in Edit. A stronger fix is a stretch item. |
-| **Glare on waxy crayon** | Highlights drop ink pixels | The close step bridges small gaps |
-| **Tilted page** | Perspective shrinks one side; lines slope | Framing guide; mild tilt (≲ 15°) is fine. Auto-deskew is a stretch item |
-| **Coloured / patterned paper** | Background not uniform | Not supported in v1 (white paper only) |
-| **Fixed focus / distance** | Blur if the paper is too close | Distance range found on day one (Step 6) and printed on the guide card |
-| **Auto-exposure** | White paper is rendered mid-grey, lowering contrast | `AE_LEVEL` bias + exposure lock |
+| **Pale colours** (yellow, light blue, pink) | Not detected | Only black, red, blue are used |
+| **Poor light** | Low contrast; noise | Light light; thinner/thicker ink; automatic retry (below) |
+| **Shadows** | A soft shadow is divided out by the paper estimate; a *sharp* shadow edge (a hand, the device) can leave a false dark band up to ~16 px wide | Light light; Retake; fix in Edit. A stronger fix is a stretch item |
+| **Glare on waxy crayon** | Highlights drop ink pixels | The close step bridges small gaps; the Light light warns about glare |
+| **Tilted page** | Perspective | Corrected by the four marks up to about **±25°**; the Level light warns beyond ±15° |
+| **A mark hidden** (a thumb over a corner, a smudge) | Marks not found | Falls back to a centre-crop, flagged; Retake |
+| **Print scale wrong** ("Fit to page") | Distance reads wrong; world scale off | The 10 cm check line on the sheet; the *world* mapping uses the marks, so the level itself is still right |
+| **Lens smudge** | Everything soft | Sharp light → wipe the lens |
+| **Auto-exposure** | White paper rendered grey | `AE_LEVEL` bias + exposure lock at countdown |
+| **Coloured / patterned paper** | Background not uniform | Not supported (white paper only) |
 
-**Quality statuses** (stage 7) and what the app does:
+**Quality statuses** and what the app does:
 
 | Status | Condition (defaults) | Review behaviour |
 |--------|----------------------|------------------|
-| `OK` | none of the below | Normal |
-| `TOO_DARK` | mean paper brightness < 90 | Lamp icon; Retake pulses |
+| `OK` | none below | Normal |
+| `MARKS_MISSING` | page not found, centre-crop used | "Paper not found" picture; Retake pulses |
+| `ORIENT_GUESS` | ring not recognised | Small hint; Retake available |
+| `TOO_DARK` | mean paper brightness < 90 | Light icon; Retake pulses |
 | `EMPTY` | ink coverage < 0.5 % | "Draw bigger and darker" picture; Retake pulses |
-| `TOO_MUCH_INK` | ink coverage > 35 % | "Is the paper filling the frame?" picture; Retake pulses |
+| `TOO_MUCH_INK` | ink coverage > 35 % | "Is the paper in view?" picture; Retake pulses |
 | `NOISY` | > 150 components survive despeckle | Retake pulses |
 
-**Automatic retry (once, silently):** `EMPTY` or low contrast → re-threshold with `INK_THRESH` lowered by 25 %; `TOO_MUCH_INK` → raised by 25 %. The better of the two results (by status) is shown.
-**Never a dead end:** whatever the status, **Looks good** stays enabled, **Retake** is one tap, and **Edit** can repair the level with a finger or start from a blank canvas.
+**Automatic retry (once, silently):** `EMPTY` or low contrast → re-threshold with `INK_THRESH` lowered 25 %; `TOO_MUCH_INK` → raised 25 %. The better result is shown.
+**Never a dead end:** **Looks good** stays enabled, **Retake** is one tap, and **Edit** repairs the level with a finger.
 
 ---
 
@@ -469,7 +552,7 @@ for (;;) {
 
 **Full-screen scenes** (Title, Picker, Win, Review, Camera preview, transitions): draw the whole frame into the back buffer and push it with DMA while the CPU already prepares the next frame in the other buffer; ≈ 31 ms per push, so **~30 fps** (fine for those screens).
 
-**Camera preview:** the 320×192 crop is contiguous in the camera's frame buffer, so it is copied straight into the back buffer, the guide and chips are drawn over it, and the buffer is pushed. The preview is limited by the camera's ~30 fps anyway.
+**Camera check preview:** the VGA frame is sampled down (by 2.5×, nearest or 2 × 2 box) to **256 × 192** and copied into the back buffer, the target frame, detected-page outline, cue arrows and chips are drawn over it, and the buffer is pushed. It is limited by the camera's frame rate anyway.
 
 > **Assumption to verify (Step 1):** SPI write speed (40 MHz?) and that the ESP32-S3 can DMA directly from PSRAM sprites. If PSRAM DMA is slow, fall back to a small (≤ 64 × 64) composite buffer in internal SRAM for the dirty rectangles and skip the second full sprite.
 
@@ -581,14 +664,14 @@ Rest on a flat floor stays still; roll at 150 px/s for 1 s over flat ground → 
 
 | Item | Bytes |
 |------|------:|
-| Camera frame buffers 2 × (320×240×2) | 307,200 |
-| Vision workspace (§5.5) | 368,640 |
+| Camera frame buffers 2 × VGA RGB565 (640×480×2) | 1,228,800 |
+| Vision workspace: mark-finding scratch 537,600 + straightened photo and masks 368,640 (§5.6) | 906,240 |
 | `scene` sprite | 153,600 |
 | `fb[0]`, `fb[1]` sprites | 307,200 |
 | Undo ring: 8 snapshots × 23,104 | 184,832 |
-| **Total** | **≈ 1,321,472 (≈ 1.26 MiB, ~16 %)** |
+| **Total** | **≈ 2,780,672 (≈ 2.65 MiB, ~33 %)** |
 
-> Camera buffers are live only in Camera/Review; the vision workspace only while `Processing`/Review. They could share memory with the undo ring (Draw is not active at the same time) if PSRAM ever gets tight. It won't at 16 %.
+> Camera buffers are live only in the Camera screens; the vision workspace only while `Processing`/Review. They could share memory with the undo ring (Draw is not active at the same time) if PSRAM ever gets tight. At 33 % it should not.
 
 ### 8.3 Flash (16 MB)
 
@@ -609,10 +692,14 @@ Rest on a flat floor stays still; roll at 150 px/s for 1 s over flat ground → 
 scribble/
 ├── LICENSE                     MIT
 ├── docs/                       these documents
+│   └── assets/                 scribble-run-level-template-a4.pdf (the printable template)
+├── tools/
+│   └── template/make_template.py   generates the template PDF (reportlab); numbers match §5.1
 ├── shared/
 │   ├── constants.json          single source of truth: physics, layout, palette, vision params
 │   ├── levels/                 built-in lessons (.scrb) + JSON twins
-│   └── golden/                 test vectors: physics runs, vision input photos + expected masks
+│   ├── audio/                  the four countdown clips (CC0): three, two, one, snap
+│   └── golden/                 test vectors: physics runs; vision photos (real + synthetic template shots) and expected masks
 ├── sim/                        browser simulator (Vite + TypeScript + canvas)
 │   └── src/
 │       ├── config.ts           GENERATED from constants.json
@@ -620,7 +707,7 @@ scribble/
 │       ├── physics.ts                                              ↔ physics.h/.cpp
 │       ├── vision.ts                                               ↔ vision.h/.cpp
 │       ├── input.ts            mouse/touch, arrow keys, DeviceOrientation   ↔ input (M5Unified)
-│       ├── camera.ts           upload / webcam → 320×240 RGB565            ↔ camera (esp32-camera)
+│       ├── camera.ts           upload / webcam → 640×480 RGB565            ↔ camera (esp32-camera)
 │       ├── renderer.ts         canvas 320×240, drawn at 3×                 ↔ renderer (M5GFX)
 │       ├── audio.ts            WebAudio tones                              ↔ audio
 │       ├── level_store.ts      localStorage + file download/upload         ↔ level_store
@@ -636,7 +723,7 @@ scribble/
 * **One constants file.** `shared/constants.json` generates `config.h` and `config.ts` (a ~30-line script), so a physics or vision value changes in exactly one place.
 * **Same names, same signatures.** `physics_step` ↔ `physicsStep`, same struct fields.
 * **Float discipline.** The device uses 32-bit `float`; the simulator uses `Math.fround` at assignment points in `physics.ts`. Results need not be bit-identical, but **golden tests allow ≤ 0.5 px drift over 600 ticks**.
-* **Vision is integer-only** (except bilinear weights, done in fixed point), so C++ and TypeScript produce **identical masks**; golden tests compare byte-for-byte.
+* **Vision is integer maths except the homography solve** (float/double, once per capture), whose result is rounded to 16.16 fixed point before the per-pixel work. C++ and TypeScript therefore agree on the four mark positions to ≤ 0.1 px and on **≥ 99.5 % of mask pixels**; the golden tests assert exactly that (and byte-identical results for stages 3–10 given the same straightened page).
 * **Bit order and endianness are fixed** (MSB first, little-endian) so `.scrb` files made in the browser load on the device and vice versa.
 * **Core code has no allocation, no globals, no I/O, no time or random calls.** All buffers are passed in.
 
@@ -644,7 +731,9 @@ scribble/
 
 * `<canvas>` of exactly **320 × 240**, CSS-scaled 3× (`image-rendering: pixelated`).
 * Mouse/touch = finger. **Arrow keys** (and the phone's `DeviceOrientation`) = tilt; **Space** or click = jump.
-* **Upload photo** and **webcam** buttons feed `camera.ts`, which resamples to 320×240, quantises to RGB565 and optionally applies a *stress preset*, then runs the same `vision.ts`.
+* **Upload photo** and **webcam** buttons feed `camera.ts`, which resamples to **640×480** (centre-crop to 4 : 3), quantises to RGB565 and optionally applies a *stress preset* (dim light, gradient shadow, 10° and 20° tilt, distance 35/45 cm, sensor noise, defocus), then runs the same `vision.ts`: find marks → straighten → level. A phone photo of the printed template works directly.
+* A **"Camera check" panel** shows the same four lights (distance, sharp, light, level) computed by `vision_live_check`, so the thresholds can be tuned before the device arrives.
+* A **synthetic template shot** generator renders a level onto the template through a camera model (perspective, distance, blur, noise) to create golden test images.
 * **Download level** writes `.scrb`; **Load level** reads it. A debug panel shows the vision stages (gray, paper estimate, ink, labels).
 
 ---
@@ -691,14 +780,16 @@ scribble/
 | # | Assumption / risk | How we check (build step) | If wrong |
 |---|-------------------|---------------------------|----------|
 | 1 | The camera works through `esp32-camera` alongside M5Unified (shared I²C/GPIO via the AW9523 expander, pin map from M5's CoreS3 camera example) | Step 6 | Use M5's own CoreS3 camera wrapper instead |
-| 2 | GC0308 delivers RGB565 QVGA at ~30 fps | Step 6 | Use YUV422 and convert; accept 15–20 fps preview |
-| 3 | Fixed focus works at 15–40 cm; field of view fits an A5/A4 page at a usable distance | Step 6 (measure and print on the guide card) | Re-scope paper size (A5) or add a "hold here" distance cue |
-| 4 | Image orientation / mirroring of the front camera | Step 6 | `hmirror`/`vflip` settings |
+| 2 | GC0308 delivers **VGA RGB565** at a usable rate (≥ 10 fps preview, ~15–30 fps expected) | Step 6 | Use YUV422 and convert; preview at QVGA and take only the still at VGA |
+| 3 | **Fixed focus is sharp from ≈ 30 cm; field of view ≈ 46° × 35°** (given to us; "confirm on device"): an A4 sheet at 35–45 cm puts the four marks in frame | Step 6: measure `w` at 35, 40, 45 cm with a ruler (§5.7); recompute `f` and the FOV | Move the marks inward / use A5, or adjust the distance range printed on the guide |
+| 4 | The camera image is not mirrored and is upright; the standing device's camera looks level at the paper | Step 6 | `hmirror`/`vflip`; a stand or shim; the Level light and accelerometer |
 | 5 | Exposure lock + `AE_LEVEL` give enough contrast on white paper in a normal room | Step 6–7 | Add a fixed-gain mode; ask for more light |
+| 5b | The four marks are found reliably (≥ 95 % of captures in normal rooms) and the ring is told from the discs | Step 7 | Bigger marks / thicker ring; improve the threshold; fall back to centre-crop |
+| 5c | The printed template is accurate to < 1 % (print scale) | Step 0 (print and measure) | The 10 cm check line; the distance light degrades gracefully |
 | 6 | Display SPI at 40 MHz; PSRAM sprites DMA well on the S3 | Step 1 | Use the SRAM composite buffer (§6.2) |
 | 7 | Touch gives clean single-point data at 60 Hz+ with a child's finger | Step 1 | Add smoothing; widen hit areas |
 | 8 | IMU X axis and sign; BMI270 noise | Step 2 | Remap axes; widen dead-zone |
-| 9 | Vision time < 0.6 s | Step 7 | Lower `FRAME_AVG`, skip closing on one class |
+| 9 | Vision time ≤ 0.8 s after the capture | Step 7 | Lower `FRAME_AVG`, skip closing on one class |
 | 10 | Battery life with camera/screen at normal brightness (a 500 mAh pack suggests *an hour or two*) | Step 8 | Dim after idle; lower brightness; ship a cable-friendly stand |
 | 11 | Two I²C devices contend (touch, IMU, PMIC, camera SCCB) | Step 6 | Serialize bus access in the platform layer |
 | 12 | tldraw licence suits an MIT repo | Before v2 | Build a minimal editor |

@@ -13,7 +13,7 @@
 | CoreS3 has | We use it for |
 |------------|---------------|
 | 2.0″ 320×240 capacitive touch screen | All controls (there are **no hardware buttons**), finger drawing |
-| GC0308 camera (0.3 MP, front, below the screen) | **Paper mode**: photograph a crayon drawing and turn it into a level |
+| GC0308 camera (0.3 MP, below the screen, faces the **same way as the screen**) | **Paper mode**: photograph a crayon drawing on a printed template and turn it into a level. Because nobody holding the paper can see the preview, the device **stands up** and counts down aloud |
 | BMI270 6-axis IMU | Tilt to roll the ball |
 | 1 W speaker + amp | All feedback is **sound + screen effects** |
 | 16 MB flash, 8 MB PSRAM, microSD | Levels in flash (LittleFS), optional export to microSD |
@@ -53,15 +53,16 @@ flowchart LR
 
 ### The first 10 seconds (the script we design to)
 
-**Paper path** (the headline):
+**Paper path** (the headline). The first time needs the **printed template** and a parent to set things up (about a minute); once it is a habit it takes about **20 seconds**. The "fun in 10 seconds" promise belongs to the finger path below.
 
-| Time | What he sees / does | Why |
-|------|---------------------|-----|
-| 0 s | Power on. Title screen: a ball rolls and jumps over the logo. | Motion + colour say "game". |
-| 2 s | Taps the **Paper** tile. The camera preview appears with a dashed framing guide. | One tap to the magic. |
-| 3–6 s | Holds up the crayon drawing, lines it up with the guide, taps the big **Snap** button. Shutter click, brief white flash. | Physical and playful. |
-| 6–7 s | Review screen: his drawing, recoloured (black ground, red spikes, blue bouncy) with a Start ball and a Flag already placed. | "It understood my drawing!" |
-| 8 s | Taps the big green **Looks good**. The ball drops and he tilts. | One obvious next step. |
+| Time | What happens | Why |
+|------|--------------|-----|
+| 0 s | Title → **Paper**. First time only: the **Stand-up guide** shows three pictures (device standing, paper facing it, 3-2-1). Tap **Ready**. | Teaches the unusual part without words. |
+| 3 s | **Camera check**: the device stands on its base; a parent holds the drawn sheet about 40 cm away (or leans it on a book or clipboard). Four lights go green: distance, sharp, light, level. | Live framing and focus quality, since the holder can't see the preview. |
+| 8 s | Taps the big **GO**. A voice counts **"3, 2, 1, snap!"** with giant digits, so there is time to step away. | The device stays still; the picture is sharp. |
+| 12 s | Shutter click, white flash, half a second of sparkle. | Physical and playful. |
+| 13 s | **Review**: his drawing, straightened and recoloured (black ground, red spikes, blue bouncy), with a Start ball and a Flag placed. | "It understood my drawing!" |
+| 15 s | **Looks good** → the ball drops and he tilts. | One obvious next step. |
 
 **Finger path** (no paper handy, and first launch): Title → **Play** opens the **starter level** in Draw mode: Start and Flag on two ledges with a wide gap between. After 3 s of no touching, a ghost finger draws a bridge. He draws, presses the green **Play** button, tilts, and wins.
 
@@ -83,23 +84,31 @@ They are normal, editable levels.
 
 ### 3.1 Paper mode (the headline feature)
 
-**The child draws on white paper** with a thick **black** crayon or marker (ground), **red** (spikes) and **blue** (bouncy). He holds the paper up to the camera, sees a live preview with a framing guide, and taps **Snap**. The picture is converted to a level (the pipeline is in [system-design.md §5](system-design.md#5-the-vision-pipeline-paper-mode)):
+**What he does:** draws on the **printed A4 level template** with a fat **black** marker or crayon (ground), **red** (spikes) and **blue** (bouncy). The template ([assets/scribble-run-level-template-a4.pdf](assets/scribble-run-level-template-a4.pdf), made by `tools/template/make_template.py`) has **four corner marks**: three dots and a ring at the top-left. The camera finds the marks, **straightens the page** even if it is tilted, and turns the drawing into a level ([system-design §5](system-design.md#5-the-vision-pipeline-paper-mode)).
 
-* ink darker than the paper → **Ground**; red ink → **Spike**; blue ink → **Bouncy**;
-* specks are removed, thin lines are thickened to at least 8 px;
-* **Start** is placed on the left, **Flag** on the right (both draggable);
-* a **Review** screen shows the detected materials in colour over the photo: **Looks good** or **Retake**.
+**How the capture works** (details in [screens.md §4](screens.md#4-camera-stand-it-up-three-screens)):
 
-**The "crayon guide"** (we print it on the back of the first sheet of paper, or just tell him):
+1. **Stand the device up** on its base. The camera faces the same way as the screen, so whoever holds the paper can't see the preview.
+2. **Camera check:** place the sheet about **40 cm** away. Four lights show distance, sharpness, light and tilt.
+3. Tap **GO**: a spoken **"3, 2, 1, snap!"** gives time to settle.
+4. **Review:** "Looks good?" or **Retake**.
+
+**Design target:** A4 **landscape**, **35–45 cm** from the camera (sweet spot 40 cm), lines **≥ 3 mm** thick. At 40 cm the camera sees about 34 × 25 cm, so the sheet fills about 87 % of the frame width. The drawing area on the sheet is **248 × 149 mm = 320 × 192 level pixels** (0.78 mm per pixel), so a 3 mm line is about 4 pixels and is thickened to the 8 px minimum.
+
+**The crayon guide** (printed on the template's footer, and stuck near the device):
 
 | Do | Don't |
 |----|-------|
-| White paper, flat, facing the screen | Coloured or crumpled paper |
-| **Fat** black crayon / marker, press hard (strokes ≥ 4 mm wide) | Pencil, thin pens (they vanish at 0.3 MP) |
-| Bright, even light from in front | A hand or the device's shadow over the paper |
-| Draw big: fill the page | Tiny doodles in a corner |
+| Print the template at **100 %**, check the 10 cm line | "Fit to page" (the distance light would lie) |
+| **Fat** black marker or crayon, press hard (lines ≥ 3 mm) | Pencil or thin pens (they vanish at 0.3 MP) |
+| Draw inside the dashed box; don't cover the four corner marks | Drawing over or outside the marks |
+| Bright, even light from the front; no shadow of a hand or the device on the sheet | One bright lamp at an angle (hard shadows and glare) |
+| White paper, flat (a clipboard or book helps) | Crumpled or coloured paper |
+| Wipe the lens if the **Sharp** light is yellow or red (fingerprints!) | |
 
-**Honest limits** (full detail in [system-design.md §5.7](system-design.md#57-limits-and-fallbacks)): the camera is only 0.3 MP, so 1 pixel ≈ 1 mm on an A4 page; glare, shadows and a tilted page all hurt; pale colours (yellow, light blue) aren't detected. That's why there's always a Review screen, a one-tap Retake, "more ink / less ink" buttons, and a finger Edit mode to fix mistakes.
+**Honest limits** ([system-design §5.8](system-design.md#58-limits-and-fallbacks)): the camera is only 0.3 MP; pale colours (yellow, light blue) aren't detected; glare and hard shadows hurt; the *fixed* focus is sharp from about 30 cm, which is why the paper stays at 35–45 cm; the camera facts (field of view, focus range) are **confirmed on the device in build Step 6**. That's why there is always a Review screen, one-tap Retake, "thinner/thicker ink", and finger **Edit** to fix mistakes. It also needs a **printed sheet and a grown-up for setup**, so finger mode remains the instant path.
+
+**No printer?** Finger mode works without anything. A hand-drawn sheet *without* the four marks still works in a fallback: the whole camera frame is centre-cropped (less accurate; the Review screen says so).
 
 ### 3.2 Finger mode
 
@@ -116,7 +125,7 @@ The same screen as finger mode, opened on an existing level or right after a pap
 ### 4.1 Playfield
 
 * **320 × 192 px** logical world, 1 world pixel = 1 screen pixel. It occupies the top 192 px of the screen; the lowest **48 px** is the *bottom bar* (tools or actions; see [screens.md](screens.md)).
-* **Why 192 (5 : 3) and not the full 240?** The bottom bar needs ≥ 44 px for touch targets. Paper mode crops the camera frame (320×240) to a centred 320×192, and the framing guide shows exactly that crop.
+* **Why 192 (5 : 3) and not the full 240?** The bottom bar needs ≥ 44 px for touch targets. The paper template's drawing area is also 5 : 3 (248 × 149 mm), so a straightened photo maps onto the level exactly, with no cropping.
 * Coordinates: `x` right, `y` down, origin top-left; velocities in **px/s**, accelerations in **px/s²**.
 * **Edges:** left and right edges are solid invisible walls. The top is open. The bottom is a **pit**: when the ball centre falls below `y = 192 + 3·radius`, it respawns (§9).
 
@@ -166,7 +175,7 @@ Every material has a **texture as well as a colour** so the game works for colou
 
 * **← Back is always top-left. ☰ Menu is always top-right.** Both have 48 × 48 px hit areas.
 * On list-style screens (Level picker, New level) they sit in a full-width 48 px **top bar**.
-* On screens that show the level (Draw, Play, Camera, Review) they float as small translucent **corner chips** over the playfield, so the canvas keeps its full size.
+* On screens that show the level or the camera (Draw, Play, Camera check, Review) they float as small translucent **corner chips** over the playfield, so the canvas keeps its full size.
 * What **←** does: *go up one step, saving first.* In Draw → Level picker. In Camera/Review → previous step. In Play → **Edit** (back to Draw), see the hold rule below.
 * The Title screen has no ← (nothing above it); the Win screen has no top bar (three big buttons only).
 
@@ -177,7 +186,9 @@ Every material has a **texture as well as a colour** so the game works for colou
 | **Title** | Tap **Levels**, **Paper**, **Play** (green, biggest) or **Draw** (bottom tiles); tap 🔊 (top-right) to cycle sound | — |
 | **Level picker** | Tap a filled slot → Play it; tap an empty slot → **New level** chooser; **←** Title; 🗑 toggles delete mode | — |
 | **New level** | Big **Paper** or **Draw** buttons; ← back | — |
-| **Camera** | **Snap** (big green) · **Draw** (switch to finger) · ← back | — |
+| **Stand-up guide** | **Ready** (big green) · ← back | — |
+| **Camera check** | Watch the four lights (**distance, sharp, light, level**) · **GO** (big, green when all lights are green) · **?** help · ← back | — |
+| **Countdown** | Nothing to do: a voice says "3, 2, 1, snap!" · ← **Stop** | — |
 | **Review** | **Looks good** (green) · **Retake** · **− ink / + ink** · drag the Start/Flag pins · ← retake | — |
 | **Draw / Edit** | Drag = paint with the selected tool · drag a pin to move it · bottom toolbar: **Ground, Spike, Bouncy, Eraser, Undo, ▶ Play** · ← Levels · ☰ menu | — |
 | **Play** | **Tap anywhere = jump** · big **Jump** pad (bottom) · **Restart** (hold 0.4 s) · **←** Edit (hold 0.4 s) · ☰ menu | **Roll** left / right |
@@ -246,7 +257,8 @@ The CoreS3 has **no vibration motor**, so every event is **sound + a screen effe
 |-------|-------|---------------|
 | Pen down / drawing | Very quiet 12 ms tick every ~24 px; pitch by material (Ground 220 Hz · Spike 880 Hz · Bouncy 440 Hz) | Ink appears instantly under the finger. |
 | Button press | 1 kHz tick, 15 ms | Button depresses (shadow 4 px → 1 px). |
-| **Snap (camera)** | Shutter "click" (two quick ticks) | White flash 80 ms, then the frame freezes for 0.3 s. |
+| **Countdown** | A voice says **"three", "two", "one", "snap!"** one second apart (always at least at Low volume when sound is on) | Giant digits bounce in; the ball bounces on each beat. |
+| **Snap (camera)** | Shutter "click" (two quick ticks) | The frame is taken *first*, then a white flash 80 ms, then a sparkle while it processes. |
 | **Review ready** | Rising "ta-da" (C5 → G5) | Detected materials pop in colour, one material at a time (0.4 s). |
 | **Detection looks poor** | Soft low two-note "hmm" (never a harsh buzz) | Friendly paper-with-question-mark icon; **Retake** pulses. No red crosses, no error text. |
 | **Jump** | Rising chirp 400 → 700 Hz, 80 ms | Ball stretches tall (1.25×) for 0.1 s. |
@@ -285,8 +297,9 @@ The CoreS3 has **no vibration motor**, so every event is **sound + a screen effe
 
 | Risk | Why a 7-year-old would hate it | Mitigation |
 |------|-------------------------------|------------|
-| **Magic fails** | He draws something lovely, the camera mangles it. | The **Review** screen *always* shows what was understood; **Retake** is one tap; **− / + ink** fixes dark/light photos; **Edit** lets him repair with a finger; failure messages are friendly pictures, not errors. |
-| **Bad light / shadows / tilted page** | The result is garbage and he can't tell why. | A **LIGHT hint** icon on the camera screen; a live brightness check that shows a lamp icon when the picture is too dark; the framing guide asks for "paper flat, facing the screen"; honest limits documented. |
+| **Magic fails** | He draws something lovely, the camera mangles it. | The **Review** screen *always* shows what was understood; **Retake** is one tap; **thinner/thicker ink** fixes dark/light photos; **Edit** lets him repair with a finger; failure messages are friendly pictures, not errors. |
+| **Can't see the preview while holding the paper** | The camera faces the same way as the screen. | The **stand-up flow**: the device stands, the **Camera check** lights tell a parent when it's right, and a **spoken 3-2-1-snap** gives time to step away. |
+| **Bad light / shadows / tilted page** | The result is garbage and he can't tell why. | The **Light** and **Level** lights; the four corner marks let the vision step **straighten a tilted page**; honest limits documented. |
 | **Pencil / thin lines vanish** | His careful pencil drawing produces an empty level. | The crayon guide; "too little ink" detection shows "draw bigger and darker" as a picture; he keeps the photo preview to compare. |
 | **Fat finger, tiny screen** | Can't hit small buttons. | ≥ 48 px targets, forgiving hit-testing, a 8 px brush, ink exactly under the touch point. |
 | **Spikes feel punishing** | Dying repeatedly. | Instant 0.5 s retry, forgiving 75 % hit-circle, no counters, a funny pop, oops puffs. |
@@ -294,7 +307,8 @@ The CoreS3 has **no vibration motor**, so every event is **sound + a screen effe
 | **Impossible level** | He draws one he can't win. | Pit respawn is non-punishing; Edit is one tap away; undo; no "failed" state. |
 | **Lost work** | Accidentally erases or exits. | Auto-save, 8-level undo, Clear needs a hold and is undoable, delete needs a hold. |
 | **Thumbs trigger buttons** | Gets thrown out of Play. | Edit/Restart need a 0.4 s hold; edge-touch rejection for jumps; test with his real grip. |
-| **Holding paper and device** | Needs three hands. | Lean the device against something, or let him hold the paper to the screen while you tap Snap. A self-timer (3-2-1) is a cheap addition. Tested in build Step 6. |
+| **Needs a printout and a grown-up** | Paper mode isn't instant. | Print a stack of templates once; finger mode is always one tap away; after the first time the paper path takes ≈ 20 s. |
+| **Fingerprints on the lens** | A smudged lens makes everything soft. | The **Sharp** light goes yellow/red and shows a wipe-the-lens picture. |
 | **Reading** | Can't read menus yet. | Icons and colours; only "You win!" and 1–10. |
 | **Sound is annoying** | A 1 W speaker is loud. | Default Low, one-tap mute, short tones. |
 | **Battery dies** | Tears. | 500 mAh is modest and the camera + screen are thirsty: auto-save everywhere, a battery icon below 20 %, screen dims after 60 s idle. |
@@ -304,8 +318,8 @@ The CoreS3 has **no vibration motor**, so every event is **sound + a screen effe
 ## 10. Open questions for review
 
 1. **Start/Flag as pins, Clear in the menu** (because 8 toolbar buttons would be 40 px). Okay? Alternative: a two-row toolbar that costs 44 px of canvas.
-2. **Camera crop.** The level is 5 : 3 (320×192) but the camera is 4 : 3 (320×240), so the top and bottom 24 rows of the photo are cropped (the framing guide shows this). Alternatively the level could be the full 320×240 and the toolbar could float over it.
-3. **Front-facing camera ergonomics.** The camera is on the *front*, so he holds the paper in front of the screen with the drawing facing the device. We must test this feels natural (propping the device up with a stand helps). The preview is **not mirrored** so left/right match the paper.
+2. **Where does the device stand?** On its DinBase, or on a small phone stand? The camera needs to look level at the paper; the **Level** light and the accelerometer will tell us. We test it in Step 6.
+3. **Where does the paper go?** Held by a parent, leaned on a clipboard against a stack of books, or taped to a wall at 40 cm. Which feels natural for you two?
 4. **Hold-to-activate** for Edit and Restart in Play (0.4 s). Okay?
 5. **Reset lessons** (restore slots 1–3) is deferred to later.
 
@@ -321,5 +335,6 @@ The CoreS3 has **no vibration motor**, so every event is **sound + a screen effe
 | **👨 Dad's challenge** | Slot 10 gets a gold border. Dad draws a nasty level and plays it once (his ghost is saved); the child tries to beat Dad's ghost. | Ghost race + a flag bit in the level header. |
 | **📷 Scan a shared level** | **The CoreS3 camera can scan a QR code** shown on another device, so levels can be shared without Wi-Fi. Showing a QR needs the level compressed to ≲ 1 KB, so the *scanning* side is easier than the *showing* side; see [system-design.md §10.2](system-design.md#102-sharing-without-wi-fi). | `encoding = 1` (RLE) reserved in the header. |
 | **💾 microSD export / import** | Copy `.scrb` files to/from a microSD card; the simulator's "Download level" makes the same file. | Same file format everywhere. |
-| **🔄 Auto-deskew** | Find the paper's corners and straighten a tilted page. | Vision pipeline has a stage slot for it. |
+| **🎙 Your own voice for the countdown** | Record "3, 2, 1, snap!" with the two built-in microphones; the clips replace the defaults. A fun five-minute job with the kids. | Countdown clips are small files in flash (§ audio assets in the system design). |
+| **📄 Template-free paper mode** | Find a plain sheet by its edges, with no corner marks. | The page-finding stage is replaceable. |
 | **🎨 Colours for new things** | Green crayon = a moving platform, yellow = a star. | Extra hue ranges in the vision config. |
