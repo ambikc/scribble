@@ -1,35 +1,55 @@
 # Scribble Run — Screens
 
+> Target device: **M5Stack CoreS3** — touch screen only: **no hardware A/B/C buttons**, so every control is on screen.
 > Companion docs: [game-design.md](game-design.md) · [system-design.md](system-design.md) · [build-plan.md](build-plan.md)
 
 ## 0. How to read the wireframes
 
-* The device screen is **320 × 240 px**. Each wireframe is **80 × 30 characters**, so **1 character = 4 px wide × 8 px tall** (monospace characters are about 1 : 2, so proportions look right).
-* The outer box is the screen. The **three-cell strip under it** is *not* screen: it is the physical **A / B / C** touch zone of the Core2 (≈ 107 × 40 px each — to be verified on the device, see [build-plan Step 1](build-plan.md)).
-* **Bottom bar:** the lowest **48 px** of the screen (rows 24–29, y 192–239) is always reserved for either the toolbar (Draw) or three tabs that sit directly **above A, B and C** (everything else). Tapping a tab does the same as pressing its physical button, except in Play where A/C need a hold (see below).
-* **Playfield:** the upper **320 × 192 px** (rows 0–23) is the level canvas.
-* Tab / button geometry (identical on every screen so thumbs learn it):
+* The screen is **320 × 240 px**. Each wireframe is **80 × 30 characters**: **1 character = 4 px wide × 8 px tall** (monospace characters are about 1 : 2, so proportions look right). The outer box is the screen.
+* ASCII legend: `#` ground (black) · `^` spike (red) · `O` bouncy (blue) · `(o)` ball · `(S)` start pin · `|>` flag · `*` highlight · `.` dim / camera noise.
+* **Every target is ≥ 48 × 48 px** (the brief's minimum is 44 px; see the size note in [game-design §5.1](game-design.md#51-touch-targets)).
 
-| Zone | x range (px) | Used by |
-|------|--------------|---------|
-| Tab **A** / button A | 0 – 105 | left action |
-| Tab **B** / button B | 108 – 211 | main action (always the *big green one* when there is one) |
-| Tab **C** / button C | 214 – 319 | right action |
+### 0.1 Screen geometry (the same everywhere so thumbs learn it)
 
-* Every on-screen target is **≥ 48 px** tall; tabs are 106 × 48; toolbar tools are 80 × 48.
-* ASCII legend: `#` ground (black) · `^` spike (red) · `O` bouncy (blue) · `(o)` ball · `(S)` start pin · `\|>` flag · `*` highlight/star.
+```text
+ Screens that show a level           List-style screens
+ (Draw, Play, Camera, Review)        (Level picker, New level)
+ +------------------------------+    +------------------------------+
+ | [<-]  corner chips     [=]   |    | [<-]   title            [x]  |  <- top bar  48 px
+ |        playfield 320x192     |    +------------------------------+
+ |                              |    |                              |
+ |                              |    |       content 320x192        |
+ +------------------------------+    |                              |
+ |   bottom bar  320x48         |    |                              |
+ +------------------------------+    +------------------------------+
+```
+
+| Region | Size (px) | Used for |
+|--------|-----------|----------|
+| **Playfield** | 320 × 192 at y 0 | The level (Draw, Play, Review) or the camera preview (Camera) |
+| **Bottom bar** | 320 × 48 at y 192 | Tools (Draw), actions (Play, Camera, Review, Win), tiles (Title) |
+| **Top bar** (list screens) | 320 × 48 at y 0 | ← Back, title icon, one extra action |
+| **Corner chips** (level screens) | 48 × 48 hit area each, 40 × 40 drawn, translucent | ← Back (top-left), ☰ Menu (top-right) |
+
+### 0.2 The navigation rule (no hardware buttons)
+
+* **← Back is always top-left. ☰ Menu is always top-right.** (On list screens the right slot holds that screen's one extra action instead, e.g. the bin.)
+* **← means "go up one step, saving first."** It never discards work.
+* **The big green button is always the "go" action** and sits in the same place: the biggest slot of the bottom bar.
+* In **Play**, ← (**Edit**) and **Restart** need a **0.4 s hold** (a ring fills around the icon). Thumbs rest near the edges; a hold prevents accidental exits. Jump is instant.
 
 ---
 
-## 1. Title screen
+## 1. Title
 
 ```text
 +--------------------------------------------------------------------------------+
-|                                                                                |
-|                                                                                |
-|                 ####  #### ####  ##### ####  ####  #     #####                 |
-|                #     #     #   #   #   #   # #   # #     #                     |
-|                 ###  #     ####    #   ####  ####  #     ####                  |
+|                                                                    +----------+|
+|                                                                    |          ||
+|                                                                    |    ((    ||
+|                 ####  #### ####  ##### ####  ####  #     #####     |   SND    ||
+|                #     #     #   #   #   #   # #   # #     #         |          ||
+|                 ###  #     ####    #   ####  ####  #     ####      +----------+|
 |                    # #     #  #    #   #   # #   # #     #                     |
 |                ####   #### #   # ##### ####  ####  ##### #####                 |
 |                                                                                |
@@ -39,44 +59,33 @@
 |                               ####  #   # # # #                                |
 |                               #  #  #   # #  ##                                |
 |                               #   #  ###  #   #                                |
-|                       ~~>                                                      |
-|                    (o)                                                         |
-|  "tap a button!"                                                               |
-|                              #########                                         |
-|                           ###         ###                            |>        |
-|                        ###               ###                         |         |
-|                     ###                     ###                      |         |
-|#####################                           ################################|
+|                                                                                |
+|                        ~~>                                                     |
+|                    (o)       #######                                           |
+|                           ###       ###                              |>        |
+|                        ###             ###                           |         |
+|                     ###                   ###                        |         |
+|#####################                         ##################################|
 |                                                                                |
 |                                                                                |
 |================================================================================|
-|         [::][::]         |            |\            |          |)) ))          |
-|         [::][::]         |            | >           |          |)) ))          |
-|                          |            |/            |                          |
-|                          |                          |                          |
-|          LEVELS          |           PLAY           |          SOUND           |
-+--------------------------------------------------------------------------------+
-|                          |                          |                          |
-|        (A) LEVELS        |         (B) PLAY         |        (C) SOUND         |
+|       [::]       |       [O]         |         |\          |        /          |
+|       [::]       |       (_)         |         | >         |       /_/         |
+|                  |                   |         |/          |                   |
+|      LEVELS      |      PAPER        |        PLAY         |       DRAW        |
+|                  |                   |                     |                   |
 +--------------------------------------------------------------------------------+
 ```
 
 | Element | Position (px) | Notes |
 |---------|---------------|-------|
-| Logo "SCRIBBLE RUN" | y 16 – 100 | Hand-drawn wobbly letters in ink with yellow highlight; slightly alive (wiggles every 2 s). |
-| Demo scene | y 112 – 176 | A ball rolls up a hill, jumps a gap, reaches a flag, loops. Pure decoration; proves the game in one glance. |
-| Tab A — Levels | 0,192 · 106×48 | Grid icon. Opens the Level picker. |
-| Tab B — Play | 108,192 · 104×48 | **Green, biggest icon (▶).** Opens the last-used level in **Play**. On first run (no saved progress) opens the **starter level in Draw** with the ghost-finger hint. |
-| Tab C — Sound | 214,192 · 106×48 | Speaker icon with 0 / 1 / 2 arcs; each press cycles Off → Low → Med. |
-| Battery | top-right, 24×12 | Only shown when < 20 %. |
-
-| Button | Action |
-|--------|--------|
-| **A** | Levels |
-| **B** | Play (last level) |
-| **C** | Sound off / low / med |
-
-Tapping anywhere above the tab bar is the same as **B**.
+| Logo "SCRIBBLE RUN" | y 16 – 100 | Hand-drawn wobbly letters; wiggles every 2 s. |
+| Demo scene | y 112 – 176 | A ball rolls up a hill, jumps a gap, reaches a flag, loops. |
+| 🔊 chip | top-right, 48×48 | Cycles Off → Low → Med. Also shows a battery icon next to it when < 20 %. |
+| **Levels** tile | x 0–71, y 192 | 2×2 grid icon → Level picker. |
+| **Paper** tile | x 72–151 | Camera icon → New level via camera (goes straight to the Camera screen). |
+| **Play** tile (green, biggest) | x 152–239 | Continues the last level in Play. First run (no saved progress): opens the **starter level in Draw** with the ghost finger. |
+| **Draw** tile | x 240–319 | Pencil icon → a new blank level in the first empty slot, in Draw. |
 
 ---
 
@@ -84,12 +93,18 @@ Tapping anywhere above the tab bar is the same as **B**.
 
 ```text
 +--------------------------------------------------------------------------------+
+|+----------+                                                        +----------+|
+||          |                                                        |          ||
+||    <-    |                   [:: ::]  MY LEVELS                   |   [T]    ||
+||   HOME   |                                                        |   BIN    ||
+||          |                                                        |          ||
+|+----------+========================================================+----------+|
 |+--------------++##############++--------------++--------------++--------------+|
 ||+------------+|#+------------+#|+------------+||+------------+||+------------+||
-|||            ||#|            |#||           P||||            ||||            |||
-|||            ||#|            |#||        ####||||            ||||            |||
-||| o         P||#| o         P|#|| o          |||| o         P|||| o         P|||
-|||###       ###|#|####^^^#### |#||##OO        ||||#/\/\/\#    ||||#/\/\/\#    |||
+|||            ||#|            |#||          P ||||            ||||            |||
+|||            ||#|            |#||       ###  ||||            ||||            |||
+||| o        P ||#| o        P |#|| o          |||| o        P |||| o        P |||
+|||###      ###||#|###^^^###   |#||##OO        ||||#/\/\/#     ||||#/\/\/#     |||
 ||+------------+|#+------------+#|+------------+||+------------+||+------------+||
 ||              |#              #|              ||              ||              ||
 ||              |#              #|              ||              ||              ||
@@ -108,222 +123,276 @@ Tapping anywhere above the tab bar is the same as **B**.
 ||      6       ||      7       ||      8       ||      9       ||      10      ||
 ||              ||              ||              ||              ||              ||
 |+--------------++--------------++--------------++--------------++--------------+|
-|================================================================================|
-|            /\            |            +             |           \_/            |
-|           /__\           |           +++            |           |||            |
-|           |[]|           |            +             |           |_|            |
-|                          |                          |                          |
-|           HOME           |           NEW            |           BIN            |
-+--------------------------------------------------------------------------------+
-|                          |                          |                          |
-|         (A) HOME         |         (B) NEW          |     (C) DELETE MODE      |
 +--------------------------------------------------------------------------------+
 ```
 
 | Element | Position (px) | Notes |
 |---------|---------------|-------|
-| Slot grid | 5 × 2 cells, each **64 × 96**, y 0 – 191 | Thumbnail **60 × 36** (the level at 1 : 5.33), big slot number below (20 px digits). |
-| Empty slot | dashed box with **＋** | Tap to start a *new blank level* in Draw (the blank has Start/Flag pins and a floor so Play works at once). |
-| Last-played slot | thick yellow border | Where you "were". |
-| **v** tick | bottom-right of the cell | Level has been beaten at least once. |
-| Delete mode | red **✕** on each filled thumbnail | Tapping ✕ shows a *hold-to-delete* ring (1.5 s). Prevents accidents. |
+| Top bar | y 0 – 47 | **←** Home (Title) · centre: grid icon · right: **🗑** toggles delete mode. |
+| Slot grid | 5 × 2 cells, each **64 × 96**, y 48 – 239 | Thumbnail **60 × 36** (the level at 1 : 5.33), big slot number below (20 px digits). |
+| Empty slot | dashed box with **＋** | Tap → **New level** chooser (§3). |
+| Last-played slot | thick yellow border | Where he was. |
+| **v** tick | bottom-right of a cell | Beaten at least once. |
+| Delete mode | red ✕ on each thumbnail | Tap ✕, then **hold 1.5 s** (a ring fills) to delete. |
 
-| Button | Action |
-|--------|--------|
-| **A** | Home (Title) |
-| **B** | **New** — creates a level in the first empty slot and opens Draw |
-| **C** | Toggle delete mode |
-
-Tap a **filled** slot → opens it in **Play**. Tap an **empty** slot → opens it in **Draw**.
-(Thumbnails are generated on save; see [system-design §4.6](system-design.md#46-thumbnails).)
+Tap a **filled** slot → opens it in **Play**. Thumbnails come from the level file's optional thumbnail chunk ([system-design §4.5](system-design.md#45-thumbnails)).
 
 ---
 
-## 3. Draw mode
+## 3. New level (chooser)
 
 ```text
 +--------------------------------------------------------------------------------+
+|+----------+                                                                    |
+||          |                                                                    |
+||    <-    |                       NEW LEVEL                                    |
+||   BACK   |                                                                    |
+||          |                                                                    |
+|+----------+====================================================================|
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|    +--------------------------------+    +--------------------------------+    |
+|    |                                |    |                                |    |
+|    |                                |    |                                |    |
+|    |                                |    |                                |    |
+|    |              [O]               |    |               /                |    |
+|    |              (_)               |    |              /_/               |    |
+|    |                                |    |                                |    |
+|    |                                |    |                                |    |
+|    |                                |    |                                |    |
+|    |                                |    |                                |    |
+|    |                                |    |                                |    |
+|    |                                |    |                                |    |
+|    |        PAPER  (camera)         |    |         DRAW  (finger)         |    |
+|    |                                |    |                                |    |
+|    |                                |    |                                |    |
+|    |                                |    |                                |    |
+|    +--------------------------------+    +--------------------------------+    |
 |                                                                                |
 |                                                                                |
 |                                                                                |
 |                                                                                |
++--------------------------------------------------------------------------------+
+```
+
+Shown when he taps an empty slot, or **New level** on the Win screen. Two huge buttons, each 136 × 136 px: **Paper** (camera + crayon icon) and **Draw** (pencil + finger icon). Top bar: **←** back, no right-hand action.
+
+---
+
+## 4. Camera capture (Paper mode)
+
+```text
++--------------------------------------------------------------------------------+
+|+----------+          .          .          .          .          .          .  |
+|| .        | .          .          .          .          .          .          .|
+||   .<-    |   .          .          .          .          .          .         |
+||   BACK   |     .          .          .          .          .          .       |
+||       .  |       .          .          .          .          .          .     |
+|+----------+         .          .          .          .          .          .   |
+| .          .          .          .          .          .          .          . |
+|   .  +::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::+      |
+|     .:         .          .          .          .          .          . :      |
+|      :.          .          .          .          .          .          :      |
+|      :  .          .          .          .          .          .        : .    |
+|.     :    .          .          .          .          .          .      :   .  |
+|  .   :      .          .          .          .          .          .    :     .|
+|    . :        .       keep the drawing inside the dashes  .          .  :      |
+|      :          .       paper flat, facing the screen       .          .:      |
+|      : .          .          .          .          .          .         :.     |
+|      :   .          .          .          .          .          .       :  .   |
+| .    :     .          .          .          .          .          .     :    . |
+|   .  :       .          .          .          .          .          .   :      |
+|     .:         .          .          .          .          .          . :      |
+|      :.          .          .          .          .          .          :      |
+|      +::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::+ .    |
+|.          .          .          .          .          .          .          .  |
+|  .          .          .          .          .          .          .          .|
+|================================================================================|
+|            /             |                       ( O )                         |
+|           /_/            |                       ( O )                         |
+|                          |                                                     |
+|           DRAW           |                        SNAP                         |
+|                          |                                                     |
++--------------------------------------------------------------------------------+
+```
+
+| Element | Position (px) | Notes |
+|---------|---------------|-------|
+| Live preview | 0,0 – 319,191 | The camera frame, centre-cropped to 320×192 (exactly what will be captured), **not mirrored** (left/right match the paper). |
+| Framing guide | dashed white rectangle, ink-outlined, 24 px inset | "Keep the drawing inside the dashes." The paper should fill the preview. |
+| ← chip | top-left | Back to the previous screen. |
+| **Lamp hint** | top-centre, only when needed | Appears if the picture is too dark or too bright (from a live brightness check). Never an error: a friendly lamp icon. |
+| **Draw** tile | x 0–103, y 192 | Switch to finger drawing instead. |
+| **Snap** tile (green) | x 104–319, y 192 | Big shutter. Press: click, 80 ms white flash, frozen frame 0.3 s, then the **Review** screen. |
+
+Optional **self-timer** (stretch): a long press on Snap starts a 3-2-1 countdown so he can hold the paper with both hands.
+
+---
+
+## 5. Capture review
+
+```text
++--------------------------------------------------------------------------------+
+|+----------+      .        .  +------------------+    .        .        .       |
+||      .   |    .        .    |   .        .     |  .        .        .        .|
+||    <-    |  .        .      | SEE THE COLOURS? |.        .        .        .  |
+||  RETAKE  |.        .        |      # ^ O      .|       .        .        .    |
+||.        .|       .        . |      .        .  |     .        .        .      |
+|+----------+     .        .   +------------------+   .        .        .        |
+|      .        .        .        .        .        .        .        .        . |
+|    .        .        .        .        .        .        .        .        .   |
+|  .        .        .        .        .        .        .        .        .     |
+|.        .        .        .        .        .        .        .        .       |
+|       .        .        .        .        .        .        .        .        .|
+|     .        .        .        .        .        .        .        .        .  |
+|   .    (S) .        .        .        .^^^^^   .        .        .   |>   .    |
+| .        .        .        .        .        .        .        .     |  .      |
+|        .        .        .        .        .        .        .       |.        |
+|    #####################        .        .        .      ################### . |
+|    #####################      .        ################# ###################   |
+|  .        .        .   #################      .        .        .        .     |
+|.        .        .        .        .        .        .        .        .       |
+|       .        .        .        .        .        .        .        .        .|
+|     .        .        .      OOOOOOO    .        .        .        .        .  |
+|   .        .        .        .        .        .        .        .        .    |
+| .        .        .        .        .        .        .        .        .      |
+|        .        .        .        .        .        .        .        .        |
+|================================================================================|
+|      (@)       |     [-]       |     [+]       |               \/              |
+|                |               |               |               /\              |
+|                |               |               |                               |
+|     RETAKE     |   LESS INK    |   MORE INK    |          LOOKS GOOD           |
+|                |               |               |                               |
++--------------------------------------------------------------------------------+
+```
+
+| Element | Position (px) | Notes |
+|---------|---------------|-------|
+| Playfield | 0,0 – 319,191 | The photo **dimmed to ~35 %**, with the detected materials drawn on top in their real colours and textures: **black** ground, **red** spikes, **blue** bouncy. |
+| Pins | on the playfield | **Start** (ball with ring) and **Flag**, auto-placed; drag to move. |
+| Legend chip | top-centre | Three swatches (black / red / blue) so he can compare with what he drew. |
+| ← chip | top-left | Same as **Retake**. |
+| **Retake** | x 0–63, y 192 | Back to the Camera. |
+| **− ink / + ink** | x 64–191 | Less / more ink detected (re-runs the threshold on the stored photo, < 0.3 s). Icons: a thinner/thicker pen. |
+| **Looks good** (green) | x 192–319 | Saves the level (thumbnail included) and goes to **Play**. |
+
+If detection looks poor, **Retake** pulses and a gentle paper-with-question icon appears; **Looks good** is still allowed (he can always fix it in Edit). The fallback rules are in [system-design §5.7](system-design.md#57-limits-and-fallbacks).
+
+---
+
+## 6. Draw / Edit
+
+```text
++--------------------------------------------------------------------------------+
+|+----------+                                                        +----------+|
+||          |                                                        |          ||
+||    <-    |                                                        |   ===    ||
+||   BACK   |                                                        |   MENU   ||
+||          |                                                        |          ||
+|+----------+                                                        +----------+|
 |                                                                                |
 |                                                                                |
 |                                                                                |
+|                              . . . . . .                                       |
 |                                                                                |
-|                                                      <~finger                  |
-|                                                                      |>        |
-|                            .   .   .   .   .   .   .   .             |         |
+|                                                                                |
+|        (o)                                                           |>        |
+|        v                                                             |         |
 |                                                                      |         |
-|                                                          ###################   |
-|        (S)                                               ###################   |
-|         v                                                                      |
-|    #####################        ^^^^                                           |
-|    #####################       ^^^^^^  OOOOOOO                                 |
-|                                        OOOOOOO                                 |
+|    #####################                                 ###################   |
+|    #####################                                 ###################   |
 |                                                                                |
 |                                                                                |
 |                                                                                |
 |                                                                                |
 |                                                                                |
+|                                 ^^^^^^     OOOOOOOOO                           |
 |                                                                                |
-|================================================================================|
-|+******************+|                   |                   |                   |
-|*       ####       *|       /\/\        |       (OO)        |       [~~]        |
-|*                  *|                   |                   |                   |
-|*      GROUND      *|      SPIKE        |      BOUNCY       |      ERASER       |
-|+******************+|                   |                   |                   |
-+--------------------------------------------------------------------------------+
-|                          |                          |                          |
-|         (A) UNDO         |         (B) PLAY         |         (C) MENU         |
+|+***********+===================================================================|
+|*   ####    *|    /\/\     |   (OO)     |   [~~]     |    <-'      |     |\     |
+|*           *|             |            |            |             |    | >     |
+|*           *|             |            |            |             |     |/     |
+|*  GROUND   *|   SPIKE     |  BOUNCY    |   ERASE    |    UNDO     |   PLAY     |
+|+***********+|             |            |            |             |            |
 +--------------------------------------------------------------------------------+
 ```
 
 | Element | Position (px) | Notes |
 |---------|---------------|-------|
-| Canvas | 0,0 – 319,191 (320×192) | Drag = paint with the selected tool. The finger is always the brush centre; ink appears instantly. |
-| Start pin `(S)` | draggable | A ball outline with a downward arrow ("it will drop"). 24 px grab radius. |
-| Flag pin `\|>` | draggable | Green flag. 24 px grab radius. |
-| Ghost finger | animated | After 3 s idle (only while the level has no player strokes yet) a translucent finger draws a black line across the gap. Stops on first touch. |
-| Tool: **Ground** | 0,192 · 80×48 | Black swatch + solid bar icon. |
-| Tool: **Spike** | 80,192 · 80×48 | Red swatch + saw-tooth icon. |
-| Tool: **Bouncy** | 160,192 · 80×48 | Blue swatch + spring icon. |
-| Tool: **Eraser** | 240,192 · 80×48 | White-and-grey eraser block; brush ring shown at 20 px. |
-| Active tool | yellow halo + button pushed in | Exactly one tool is always active; default **Ground**. |
+| Canvas | 0,0 – 319,191 | Drag = paint with the selected tool; the finger is the brush centre; ink appears instantly. |
+| ← chip | top-left | Saves, then goes to the Level picker. |
+| ☰ chip | top-right | Opens the menu (Back, **Clear** with hold, Levels, Sound, Home). |
+| Start pin `(S)` | draggable | Ball with a down arrow. 24 px grab radius. |
+| Flag pin `\|>` | draggable | 24 px grab radius. |
+| Ghost finger | animated | After 3 s idle, only on a fresh starter level: a translucent finger draws a bridge. Stops on first touch. |
+| **Ground** | x 0–51 | Black swatch. Default tool. |
+| **Spike** | x 52–107 | Red swatch with saw-tooth icon. |
+| **Bouncy** | x 108–159 | Blue swatch with spring icon. |
+| **Eraser** | x 160–211 | White-and-grey eraser block; brush ring is 20 px. |
+| **Undo** | x 212–267 | Up to 8 steps; greyed when nothing to undo. |
+| **▶ Play** (green) | x 268–319 | Saves and starts Play. |
+| Active tool | yellow halo + pushed-in button | Exactly one tool is always active. |
 
-| Button | Action |
-|--------|--------|
-| **A — Undo** | Undo last stroke / pin move (8 levels). Greyed when nothing to undo. |
-| **B — Play ▶** | Auto-saves, then switches to Play. *This is the one big green action.* |
-| **C — Menu ☰** | Opens the menu overlay (Back, Clear, Levels, Sound, Home). |
-
-> **Labelling A/B/C in Draw.** The toolbar fills the bottom bar, so A/B/C can't be labelled on screen here. We put **coloured stickers** on the device (blue pencil-arrow, green ▶, grey ☰) and, until the first Play, pulse three small hint icons at the very bottom edge of the canvas. See open question 1 in [game-design.md](game-design.md#9-open-questions-for-review).
+The same screen is used for **Edit** (an existing level, or after a paper capture).
 
 ---
 
-## 4. Play mode
+## 7. Play
 
 ```text
 +--------------------------------------------------------------------------------+
-|                                                                    +..........+|
-|                                                                    :          :|
-|                                                                    :   ===    :|
-|  <- tilt ->                                                        :   ===    :|
-|                                                                    :          :|
-|                                                                    +..........+|
+|+----------+                                                        +----------+|
+||          |                                                        |          ||
+||    <-    |                                                        |   ===    ||
+||   EDIT   |                       <- tilt ->                       |   MENU   ||
+||          |                                                        |          ||
+|+----------+                                                        +----------+|
 |                                                                                |
 |                            (o)                                                 |
 |                    . . .                                                       |
+|                                                                                |
+|                                                                                |
+|                                                                                |
 |                                                                      |>        |
 |                                                                      |         |
 |                                                                      |         |
-|                                                          ###################   |
-|                                                          ###################   |
-|                                                                                |
-|    #####################                                                       |
-|    #####################        ^^^^   OOOOOOO                                 |
-|                                        OOOOOOO                                 |
+|    #####################                                 ###################   |
+|    #####################                                 ###################   |
 |                                                                                |
 |                                                                                |
 |                                                                                |
 |                                                                                |
 |                                                                                |
+|                                 ^^^^^^     OOOOOOOOO                           |
 |                                                                                |
 |================================================================================|
-|                          |                          |                          |
-|         / (hold)         |            ^             |         @ (hold)         |
-|                          |                          |                          |
-|           EDIT           |           JUMP           |           REDO           |
-|                          |                          |                          |
-+--------------------------------------------------------------------------------+
-|                          |                          |                          |
-|     (A) EDIT (hold)      |         (B) JUMP         |    (C) RESTART (hold)    |
+|             (@)              |                       ^                         |
+|                              |                                                 |
+|                              |                                                 |
+|       RESTART  (hold)        |                      JUMP                       |
+|                              |                                                 |
 +--------------------------------------------------------------------------------+
 ```
 
 | Element | Position (px) | Notes |
 |---------|---------------|-------|
-| Playfield | 0,0 – 319,191 | The level exactly as drawn (same pixels as in Draw). |
-| ☰ pause target | top-right, **48×48** (x 272–319, y 0–47) | Only a 24 px ghosted icon is drawn; the whole 48×48 is the hit area. Tap → Pause menu. Taps here never jump. |
-| Jump | **anywhere else on the playfield** | Fires on touch-down. Touches starting within 12 px of the left/right edge are ignored (grip). |
-| Bottom hint strip | y 192–239 | Three tabs *above A, B, C* acting as hints. **A and C are hold-to-activate** (0.4 s; a ring fills around the icon). **B jumps instantly.** |
-| Tilt hint | first Play only | Animated arrows `← tilt →` next to the ball for 3 s. |
+| Playfield | 0,0 – 319,191 | The level exactly as drawn. |
+| ← chip **Edit** | top-left | **Hold 0.4 s** → Draw. A ring fills; releasing early does nothing. |
+| ☰ chip | top-right | Tap → pause menu. Taps here never jump. |
+| Jump | **anywhere else on the playfield** | On touch-down. Touches beginning within 12 px of the left/right screen edge are ignored (grip). |
+| **Restart** | x 0–119, y 192 | **Hold 0.4 s**; ball back to Start. |
+| **Jump** (green, big) | x 120–319, y 192 | Instant. A big thumb target; the same as tapping the field. |
+| Tilt hint | first Play only | Animated arrows `← tilt →` near the ball for 3 s. |
 | Oops puffs | where recent pops happened | Faint grey clouds; cleared on edit. |
 
-| Button | Action |
-|--------|--------|
-| **A — Edit** (hold 0.4 s) | Back to Draw, level exactly as it was. |
-| **B — Jump** | Jump. Same as tapping the screen. |
-| **C — Restart** (hold 0.4 s) | Ball back to Start. |
-
-Playing has *no* HUD: no score, no timer, no lives.
+No score, timer or lives on screen.
 
 ---
 
-## 5. Win screen
+## 8. Pause / menu
 
-```text
-+--------------------------------------------------------------------------------+
-|                                                                                |
-|                                                                                |
-|                      *             ~                                           |
-|      *                                       /             *                   |
-|                                       /\                                 *     |
-|                          ~        ---'  `---                                   |
-|    /                              \   BIG   /                                  |
-|                                    >  STAR  <                                  |
-|              *                    /  .--.  \                                   |
-|                                  /_.-'  `-._\                        *         |
-|                                                                                |
-|                                                                                |
-|                  \                                 *                           |
-|                                                    |>                          |
-|                              *      (^_^)          |                   \       |
-|                                                    |     ~                     |
-|          *                   #####################                             |
-|                                                                  *             |
-|                                                  /                             |
-|                                                                                |
-|                                                                                |
-|                                                                                |
-|                                                                                |
-|                                                                                |
-|================================================================================|
-|             /            |             |\           |         [::][::]         |
-|             /            |            | >           |         [::][::]         |
-|           /_/            |             |/           |                          |
-|                          |                          |                          |
-|          TWEAK           |          AGAIN           |          LEVELS          |
-+--------------------------------------------------------------------------------+
-|                          |                          |                          |
-|        (A) TWEAK         |      (B) PLAY AGAIN      |        (C) LEVELS        |
-+--------------------------------------------------------------------------------+
-```
-
-Shown about 1.2 s after the flag is touched (the in-level celebration plays first; see [game-design §6](game-design.md#6-feedback-win-lose-and-everything-in-between)).
-
-| Element | Notes |
-|---------|-------|
-| Background | Paper with a green burst; confetti continues falling for 4 s. |
-| Big star | Bounces in (overshoot easing, 0.4 s). Later: shows earned stars (stretch). |
-| Ball | Happy face (eyes squint, big smile). |
-| Tab A — Tweak | Pencil icon → back to **Draw** on this level. *The tweak loop is the point of the game.* |
-| Tab B — Again | **Green ▶** → replay the level. |
-| Tab C — Levels | Grid icon → Level picker. |
-
-| Button | Action |
-|--------|--------|
-| **A** | Tweak (Draw) |
-| **B** | Play again |
-| **C** | Levels |
-
-(Tabs on the Win screen are *instant* — there's no tilting happening, so no accidental-press risk.)
-
----
-
-## 6. Pause / menu
-
-Opened from Play (☰ tap) or Draw (**C**). It's an overlay: the scene behind is dimmed and frozen. Six big buttons, each **96 × 80 px** (3 × 2 grid, 288 × 160 px panel at x 16, y 16). Icons only.
+An overlay: the scene behind is dimmed and frozen. A 3 × 2 grid of big buttons (each 96 × 80 px; a 288 × 160 panel at x 16, y 16). Icons only. **←** (top-left chip) or a tap outside the panel closes it.
 
 **From Play:**
 
@@ -335,7 +404,7 @@ Opened from Play (☰ tap) or Draw (**C**). It's an overlay: the scene behind is
 | . .|                       |                       |                       |. .|
 |. . |                       |                       |                       | . |
 | . .|                       |                       |                       |. .|
-|. . |          (>)          |           /           |         [::]          | . |
+|. . |          |>           |           /           |         [::]          | . |
 | . .|                       |                       |                       |. .|
 |. . |                       |                       |                       | . |
 | . .|        RESUME         |         EDIT          |        LEVELS         |. .|
@@ -345,7 +414,7 @@ Opened from Play (☰ tap) or Draw (**C**). It's an overlay: the scene behind is
 | . .|                       |                       |                       |. .|
 |. . |                       |                       |                       | . |
 | . .|                       |                       |                       |. .|
-|. . |           @           |          ((           |          /\           | . |
+|. . |          (@)          |          ((           |          /\           | . |
 | . .|                       |                       |                       |. .|
 |. . |                       |                       |                       | . |
 | . .|        RESTART        |         SOUND         |         HOME          |. .|
@@ -353,19 +422,16 @@ Opened from Play (☰ tap) or Draw (**C**). It's an overlay: the scene behind is
 | . .|                       |                       |                       |. .|
 |. . +-----------------------+-----------------------+-----------------------+ . |
 | . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .|
-|================================================================================|
-|                          |                          |                          |
-|            <-            |                          |                          |
-|                          |                          |                          |
-|          CLOSE           |                          |                          |
-|                          |                          |                          |
-+--------------------------------------------------------------------------------+
-|                          |                          |                          |
-|        (A) CLOSE         |          (B) -           |          (C) -           |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
 +--------------------------------------------------------------------------------+
 ```
 
-**From Draw:**
+**From Draw / Edit:**
 
 ```text
 +--------------------------------------------------------------------------------+
@@ -375,7 +441,7 @@ Opened from Play (☰ tap) or Draw (**C**). It's an overlay: the scene behind is
 | . .|                       |                       |                       |. .|
 |. . |                       |                       |                       | . |
 | . .|                       |                       |                       |. .|
-|. . |          (>)          |          [X]          |         [::]          | . |
+|. . |          |>           |          [T]          |         [::]          | . |
 | . .|                       |                       |                       |. .|
 |. . |                       |                       |                       | . |
 | . .|         BACK          |     CLEAR (hold)      |        LEVELS         |. .|
@@ -393,88 +459,140 @@ Opened from Play (☰ tap) or Draw (**C**). It's an overlay: the scene behind is
 | . .|                       |                       |                       |. .|
 |. . +-----------------------+-----------------------+-----------------------+ . |
 | . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .|
-|================================================================================|
-|                          |                          |                          |
-|            <-            |                          |                          |
-|                          |                          |                          |
-|          CLOSE           |                          |                          |
-|                          |                          |                          |
-+--------------------------------------------------------------------------------+
-|                          |                          |                          |
-|        (A) CLOSE         |          (B) -           |          (C) -           |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
 +--------------------------------------------------------------------------------+
 ```
 
 | Cell | Play menu | Draw menu |
 |------|-----------|-----------|
-| 1 | **Resume** (green ▶) | **Back** (green ▶, returns to drawing) |
-| 2 | **Edit** (pencil) → Draw | **Clear** (trash can, *hold 0.8 s*; undoable) |
-| 3 | **Levels** → picker | **Levels** → picker (auto-saves first) |
+| 1 | **Resume** (green ▶) | **Back** (green ▶) |
+| 2 | **Edit** (pencil) → Draw | **Clear** (trash, **hold 0.8 s**; undoable) |
+| 3 | **Levels** → picker | **Levels** → picker (saves first) |
 | 4 | **Restart** | **Sound** |
 | 5 | **Sound** | **Home** → Title |
 | 6 | **Home** → Title | — |
 
-| Button | Action |
-|--------|--------|
-| **A** | Close menu (same as Resume / Back) |
-| **B**, **C** | Unused in menus |
+---
 
-Tapping the dimmed area outside the panel also closes it.
+## 9. Win
+
+```text
++--------------------------------------------------------------------------------+
+|                                                                                |
+|                                                                                |
+|                      *                                                         |
+|      *                          Y O U   W I N !            *                   |
+|                                                                          *     |
+|                          ~                                                     |
+|    /                                  /\                                       |
+|                                   ---'  `---                                   |
+|              *                    \   BIG   /                                  |
+|                                    >  STAR  <                        *         |
+|                                   /  .--.  \                                   |
+|                                                                                |
+|                  \                                 *                           |
+|                                                                                |
+|                              *                                         \       |
+|                                                  |>      ~                     |
+|          *                          (^_^)        |                             |
+|                                                  |               *             |
+|                            #########################                           |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|================================================================================|
+|            /             |            |\             |           +             |
+|           /_/            |            | >            |          +++            |
+|                          |            |/             |                         |
+|           EDIT           |        PLAY AGAIN         |       NEW LEVEL         |
+|                          |                           |                         |
++--------------------------------------------------------------------------------+
+```
+
+Shown about 1.2 s after the flag is touched, once the in-level celebration has played ([game-design §7](game-design.md#7-feedback-win-lose-and-everything-in-between-no-vibration)).
+
+| Element | Notes |
+|---------|-------|
+| "YOU WIN!" | The one piece of text; hand-drawn, bounces in. |
+| Big star + ball | Star bounces in (0.4 s overshoot); ball with a happy face; confetti for 4 s. |
+| **Edit** (pencil) | x 0–103 → Draw on this level. *Tweaking is the point of the game.* |
+| **Play again** (green) | x 104–215 → replay. |
+| **New level** (＋) | x 216–319 → the New level chooser (Paper / Draw). |
+
+No top bar here (nobody is tilting, so accidental presses are not a concern; all three buttons are instant).
 
 ---
 
-## 7. Button summary (A / B / C on every screen)
+## 10. Navigation summary
 
-| Screen | **A** | **B** | **C** |
-|--------|-------|-------|-------|
-| Title | Levels | **Play** | Sound |
-| Level picker | Home | **New** | Delete mode |
-| Draw | Undo | **▶ Play** | Menu |
-| Play | Edit *(hold)* | **Jump** | Restart *(hold)* |
-| Win | Tweak | **Play again** | Levels |
-| Menu | Close | — | — |
-
-**Rule of thumb for the whole UI:** **B (middle) is always the big green "go" action.** A is "go back / change something". C is "more".
+| Screen | ← (top-left) | ☰ / extra (top-right) | Bottom bar, left → right (green = primary) |
+|--------|--------------|-----------------------|---------------------------------------------|
+| Title | — | 🔊 sound | Levels · Paper · **Play** · Draw |
+| Level picker | Title | 🗑 delete mode | — (grid fills the screen) |
+| New level | Level picker | — | — (two big buttons) |
+| Camera | previous screen | — | Draw · **Snap** |
+| Review | Retake | — | Retake · − ink · + ink · **Looks good** |
+| Draw / Edit | Level picker (saves) | ☰ menu | Ground · Spike · Bouncy · Eraser · Undo · **▶ Play** |
+| Play | **Edit** (hold) | ☰ menu | Restart (hold) · **Jump** |
+| Menu | close | — | — |
+| Win | — | — | Edit · **Play again** · New level |
 
 ---
 
-## 8. Screen flow
+## 11. Screen flow
 
 ```mermaid
 flowchart TD
     Boot([Power on]) --> Title
 
-    Title -->|"A: Levels"| Picker
-    Title -->|"B: Play (first run)"| DrawStarter["Draw<br/>starter level + ghost finger"]
-    Title -->|"B: Play (returning)"| Play
-    Title -->|"C: Sound"| Title
+    Title -->|"Levels"| Picker
+    Title -->|"Paper"| Camera
+    Title -->|"Draw"| Draw
+    Title -->|"Play, returning"| Play
+    Title -->|"Play, first run"| Draw
 
-    Picker -->|"A: Home"| Title
-    Picker -->|"B: New / tap empty slot"| Draw
-    Picker -->|"tap filled slot"| Play
+    Picker -->|"filled slot"| Play
+    Picker -->|"empty slot"| Chooser["New level"]
+    Picker -->|"back"| Title
+    Chooser -->|"Paper"| Camera
+    Chooser -->|"Draw"| Draw
+    Chooser -->|"back"| Picker
 
-    DrawStarter --> Draw
-    Draw -->|"B: Play"| Play
-    Draw -->|"C: Menu"| MenuD["Menu (from Draw)"]
-    MenuD -->|"A / Back"| Draw
+    Camera -->|"Snap"| Review
+    Camera -->|"Draw tile"| Draw
+    Camera -->|"back"| Title
+    Review -->|"Retake"| Camera
+    Review -->|"Looks good"| Play
+
+    Draw -->|"Play"| Play
+    Draw -->|"menu"| MenuD["Menu (from Draw)"]
+    Draw -->|"back (saves)"| Picker
+    MenuD -->|"close"| Draw
     MenuD -->|"Levels"| Picker
     MenuD -->|"Home"| Title
 
-    Play -->|"touch spike or fall:<br/>respawn, stay in Play"| Play
+    Play -->|"spike or pit: respawn"| Play
     Play -->|"reach flag"| Win
-    Play -->|"A: Edit (hold)"| Draw
-    Play -->|"tap ☰"| MenuP["Menu (from Play)"]
-    MenuP -->|"A / Resume"| Play
+    Play -->|"Edit (hold)"| Draw
+    Play -->|"menu"| MenuP["Menu (from Play)"]
+    MenuP -->|"Resume"| Play
     MenuP -->|"Edit"| Draw
     MenuP -->|"Levels"| Picker
     MenuP -->|"Home"| Title
 
-    Win -->|"A: Tweak"| Draw
-    Win -->|"B: Play again"| Play
-    Win -->|"C: Levels"| Picker
+    Win -->|"Edit"| Draw
+    Win -->|"Play again"| Play
+    Win -->|"New level"| Chooser
 ```
 
-The same flow as a state machine, with the events that drive it, is in [system-design.md §3](system-design.md#3-state-machine).
+The same flow as a state machine with its events is in [system-design.md §3](system-design.md#3-state-machine).
 
 ---
 
@@ -482,64 +600,70 @@ The same flow as a state machine, with the events that drive it, is in [system-d
 
 ### Principles
 
-1. **Sketchbook feel.** Warm cream paper, ink-black lines, bright marker colours. Looks hand-made, reads at a glance.
+1. **Sketchbook feel.** Warm cream paper, ink-black lines, bright marker colours. It looks like the paper he draws on, so the camera result feels like the same world.
 2. **Few colours, always the same meaning.** One colour → one idea (red = danger, blue = bounce, green = go, yellow = you/special).
-3. **Chunky.** Strokes ≥ 4 px, icons 32 × 32 px drawn with ≥ 4 px strokes, 3 px ink outlines, rounded caps. Fine detail disappears on a 2″ screen.
-4. **Readable at 2 inches.** Viewing distance ≈ 30 cm. The screen is only ≈ 41 × 31 mm: anything under 12 px tall is unreadable, so UI text is ≥ 20 px or absent.
+3. **Chunky.** Strokes ≥ 4 px, icons 32 × 32 px with ≥ 4 px strokes, 3 px ink outlines, rounded caps. Fine detail disappears on a 2″ screen.
+4. **Readable at 2 inches** (viewing distance ≈ 30 cm; the screen is ≈ 41 × 31 mm): anything under 12 px tall is unreadable, so UI text is ≥ 20 px or absent.
 5. **Never colour alone** (see below).
 
 ### Palette (9 colours, RGB565 for the firmware)
 
 | Name | Hex | RGB565 | Used for |
 |------|-----|--------|----------|
-| **Paper** | `#FFF4D6` | `0xFFBA` | Background of the playfield and screens |
+| **Paper** | `#FFF4D6` | `0xFFBA` | Backgrounds |
 | Paper dot | `#EADFB8` | `0xEEF7` | Faint 16 px dot-grid on the playfield |
 | **Ink** | `#1C1C24` | `0x18E4` | **Ground**, outlines, text |
 | **Red** | `#F03A2E` | `0xF1C5` | **Spike**, pop particles |
 | **Blue** | `#2F7DF6` | `0x2BFE` | **Bouncy**, sparkles |
-| **Green** | `#25C26E` | `0x260D` | **Flag, Start, the big ▶ / "go" actions** |
-| **Yellow** | `#FFD23F` | `0xFE87` | **Ball**, stars, selected-tool halo, last-played border |
-| White | `#FFFFFF` | `0xFFFF` | Highlights, icon glyphs on colour, ball eyes |
-| Grey | `#B9B3A0` | `0xBD94` | Disabled buttons, oops puffs, dimmed overlay tint |
+| **Green** | `#25C26E` | `0x260D` | **Flag, Start, the big "go" buttons** |
+| **Yellow** | `#FFD23F` | `0xFE87` | **Ball**, stars, selected-tool halo |
+| White | `#FFFFFF` | `0xFFFF` | Highlights, camera guide |
+| Grey | `#B9B3A0` | `0xBD94` | Disabled buttons, oops puffs, dim overlay |
 
-(RGB565 = `(R & 0xF8) << 8 | (G & 0xFC) << 3 | B >> 3`.) All values live in the shared constants file ([system-design §9](system-design.md#9-code-sharing-between-simulator-and-firmware)).
+(RGB565 = `(R & 0xF8) << 8 | (G & 0xFC) << 3 | B >> 3`.) The same values live in the shared constants file ([system-design §9](system-design.md#9-code-sharing-between-simulator-and-firmware)). The red and blue are also the **target colours on paper**: the vision pipeline's hue ranges are tuned around ordinary red and blue crayons, which differ from these screen colours.
 
 ### Colour-blind safety: materials also have a texture
 
 | Material | Colour | Texture painted by the renderer (per pixel, no assets) |
 |----------|--------|--------------------------------------------------------|
 | Ground | Ink | Solid |
-| Spike | Red | Diagonal white-ish tick every 4 px (`(x + y) & 3 == 0` drawn as light red) → looks "spiky" |
-| Bouncy | Blue | White dot on a 4 × 4 lattice (`x & 3 == 0 && y & 3 == 0`) → looks "springy/bubbly" |
+| Spike | Red | Diagonal light tick every 4 px (`(x + y) & 3 == 0`) → "spiky" |
+| Bouncy | Blue | White dot on a 4 × 4 lattice (`x & 3 == 0 && y & 3 == 0`) → "bubbly" |
 
 Toolbar icons use shape too: Ground = flat bar, Spike = saw-tooth, Bouncy = spring coil, Eraser = tilted block with a grey band.
 
 ### Buttons and icons
 
-* **Buttons:** rounded rectangles (radius 8), 3 px ink outline, a 4 px offset "shadow". Pressed = shadow 1 px and the button moves down 3 px (it *looks* pressed).
-* **Icons** are drawn with primitives (`fillTriangle`, `fillRoundRect`, `fillCircle`, thick lines) in code, not bitmaps — no asset pipeline, crisp at any size, colours stay in the palette.
-* **Primary action** is always green with an **ink** glyph (white on this green is only 2.2 : 1 contrast; ink is about 7 : 1). **Secondary** is white or paper with an ink glyph. **Destructive** (delete, clear) is red with an ink glyph and needs a hold.
+* **Buttons:** rounded rectangles (radius 8), 3 px ink outline, 4 px offset "shadow". Pressed = shadow 1 px and the button moves down 3 px.
+* **Corner chips** (← and ☰ over a level): 40 px round chips, paper colour at ~70 % opacity, ink outline, 48 px hit area.
+* **Icons** are drawn with primitives (`fillTriangle`, `fillRoundRect`, `fillCircle`, thick lines) in code, not bitmaps; crisp at any size, colours stay in the palette.
+* **Primary action** is always green with an **ink** glyph (white on this green is only 2.2 : 1 contrast; ink is about 7 : 1). **Secondary** is white/paper with an ink glyph. **Destructive** (delete, clear) is red with an ink glyph and needs a hold.
 
 | Icon | Shape | Where |
 |------|-------|-------|
-| ▶ Play | right-pointing triangle | Title B, Draw B, Win B, menus |
-| ✏ Edit / Tweak | slanted pencil | Play A, Win A, Play menu |
-| ↶ Undo | curved arrow left | Draw A |
-| ☰ Menu | three bars | Draw C, Play top-right |
-| ↻ Restart | circular arrow | Play C, Play menu |
-| ▦ Levels | 2 × 2 grid | Title A, Win C, menus |
-| ⌂ Home | house | Level picker A, menus |
-| ＋ New | plus | Level picker B, empty slots |
-| 🗑 Delete / Clear | trash can | Level picker C, Draw menu |
-| 🔊 Sound | speaker with 0 / 1 / 2 arcs | Title C, menus |
+| ▶ Play | right-pointing triangle | Title, Draw, Win, menus |
+| ✏ Edit / Draw | slanted pencil | Title, Camera, Chooser, Win, Play ← chip, menus |
+| 📷 Paper / Snap | camera body with a lens circle | Title, Chooser, Camera |
+| ↶ Undo | curved arrow left | Draw |
+| ☰ Menu | three bars | top-right chip |
+| ← Back | left arrow | top-left chip |
+| ↻ Restart / Retake | circular arrow | Play, Review |
+| ▦ Levels | 2 × 2 grid | Title, menus |
+| ⌂ Home | house | menus |
+| ＋ New | plus | empty slots, Win |
+| 🗑 Delete / Clear | trash can | Picker top bar, Draw menu |
+| 🔊 Sound | speaker with 0 / 1 / 2 arcs | Title, menus |
+| 💡 Lamp | light bulb | Camera (only when the picture is too dark/bright) |
+| ± ink | thin / thick pen stroke | Review |
+| ✓ Looks good | check mark | Review |
 
 ### Typography
 
-* Only two sizes of one bold, rounded sans font (M5GFX's built-in `FreeSansBold12pt7b` for the slot numbers and `FreeSansBold18pt7b` for the logo fall-back): **numbers 1–10** and the **logo**. Everything else is icons.
-* The logo is drawn as 12 stroke-built letters (not a font) for a hand-drawn look.
+* Only two sizes of one bold, rounded sans font (M5GFX's `FreeSansBold12pt7b` for slot numbers, `FreeSansBold18pt7b` for "YOU WIN!"). Everything else is icons. The logo is drawn from strokes for a hand-made look.
 
 ### Motion
 
 * Everything that appears **bounces slightly** (overshoot easing 0.2 – 0.4 s).
-* Screen changes are a quick **paper-wipe** (≈ 150 ms) — fast enough that it never feels like waiting.
-* Particles are a fixed pool (max 32), drawn as 2–4 px squares/circles in palette colours.
+* Screen changes are a quick **paper-wipe** (≈ 150 ms).
+* Particles are a fixed pool (max 32), 2–4 px squares/circles in palette colours.
+* Camera: white flash 80 ms on Snap; Review recolours materials in one at a time (ground, then spikes, then bouncy) for the "it understood me" moment.
