@@ -12,7 +12,7 @@
 | MCU | ESP32-S3, dual core, 240 MHz, single-precision FPU | `float` physics is fine; use core 0 for camera/vision, core 1 for the game loop |
 | Memory | 512 KB SRAM (about 250–300 KB usable by us), **8 MB PSRAM**, **16 MB flash** | Big buffers (sprites, camera frames, vision workspace) live in PSRAM; hot data (level layers) in SRAM |
 | Screen | 2.0″ IPS 320×240, ILI9342C over SPI, capacitive touch (single touch reliable) | A full-screen push is ~31 ms at 40 MHz SPI (**to be measured**), so Play repaints only changed rectangles |
-| Camera | GC0308, 0.3 MP, front-facing, below the screen | QVGA (320×240) frames; fixed focus, small field of view (**both to be measured**) |
+| Camera | GC0308, **0.3 MP** (a retailer listing says "30 megapixels"; that is a typo for 30W = 300,000 pixels), front-facing, below the screen | QVGA (320×240) frames; fixed focus, small field of view (**both to be measured**) |
 | IMU | BMI270 accelerometer + gyro (+ BMM150 magnetometer, unused) | Tilt = accelerometer X axis; read through M5Unified's `M5.Imu` |
 | Audio | AW88298 amplifier, 1 W speaker | Synthesised tones, no audio files in v1 |
 | Storage | LittleFS in flash, optional microSD | Levels in LittleFS; microSD for export/import |

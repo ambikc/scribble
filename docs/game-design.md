@@ -17,7 +17,8 @@
 | BMI270 6-axis IMU | Tilt to roll the ball |
 | 1 W speaker + amp | All feedback is **sound + screen effects** |
 | 16 MB flash, 8 MB PSRAM, microSD | Levels in flash (LittleFS), optional export to microSD |
-| 500 mAh battery | A play session; see §11 |
+| 500 mAh battery | A play session; see §9.2 |
+| Body **54 × 54 × 16 mm, 73 g** (from the product spec) | A small, light device: a child's thumbs rest on the screen edges, which is why Play uses holds and an edge-touch margin (§5.3) |
 | **No** vibration motor, **no** A/B/C touch buttons | Nothing buzzes; every control is an on-screen target |
 
 ### Design pillars
