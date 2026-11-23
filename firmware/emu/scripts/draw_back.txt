@@ -1,0 +1,11 @@
+# The back chip saves the level and goes up one step (the level picker).
+# Run:  cd firmware && EMU_START=draw EMU_SLOT=7 EMU_FS=/tmp/fs_back EMU_SCRIPT=emu/scripts/draw_back.txt SDL_VIDEODRIVER=dummy .pio/build/emu/program
+# Expected: exactly one [level crc ...] line (the save), right after the tap, then the picker is shown.
+500 down 100 100
+560 move 200 60
+620 up
+800 log before-back
+900 tap 24 24
+1300 log after-back
+1400 shot /tmp/draw_shots/back_picker.ppm
+1500 quit

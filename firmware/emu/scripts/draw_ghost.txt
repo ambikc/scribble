@@ -1,0 +1,13 @@
+# Draw screen on the starter level ("Bridge", slot 0 after the first run): the ghost finger after 3 s idle, gone for good after a touch.
+# Run:  cd firmware && EMU_START=draw EMU_SLOT=0 EMU_FS=/tmp/fs_ghost EMU_SCRIPT=emu/scripts/draw_ghost.txt SDL_VIDEODRIVER=dummy .pio/build/emu/program
+# (then look at /tmp/draw_shots/ghost_*.ppm)
+500 shot /tmp/draw_shots/ghost_0_none.ppm
+3300 shot /tmp/draw_shots/ghost_1_start.ppm
+4600 shot /tmp/draw_shots/ghost_2_mid.ppm
+5800 shot /tmp/draw_shots/ghost_3_end.ppm
+6500 shot /tmp/draw_shots/ghost_4_gone.ppm
+7600 shot /tmp/draw_shots/ghost_5_again.ppm
+8000 tap 160 20
+9000 shot /tmp/draw_shots/ghost_6_after_touch.ppm
+14000 shot /tmp/draw_shots/ghost_7_never_again.ppm
+14100 quit

@@ -1,0 +1,95 @@
+# Draw screen: strokes, undo, eraser, fast scribble, pins, toolbar/chip drags. Run by emu/run_draw_tests.sh with EMU_START=draw EMU_SLOT=5.
+# Every 'log save-N' follows 6 s of idle: the game autosaves and prints [level crc XXXXXXXX], which the runner compares with test_draw.
+300 shot /tmp/draw_shots/draw_blank.ppm
+450 tap 26 216
+600 log tapped
+700 down 60 100
+760 move 100 60
+820 move 150 100
+880 move 200 60
+940 move 250 100
+980 shot /tmp/draw_shots/draw_ground.ppm
+1040 up
+7040 log save-1
+7190 tap 80 216
+7340 log tapped
+7440 down 60 130
+7500 move 260 130
+7540 shot /tmp/draw_shots/draw_spike.ppm
+7600 up
+13600 log save-2
+13750 tap 134 216
+13900 log tapped
+14000 down 100 40
+14060 move 100 150
+14100 shot /tmp/draw_shots/draw_bouncy.ppm
+14160 up
+20160 log save-3
+20310 tap 186 216
+20460 log tapped
+20560 down 150 30
+20620 move 150 140
+20660 shot /tmp/draw_shots/draw_eraser.ppm
+20720 up
+26720 log save-4
+26820 shot /tmp/draw_shots/draw_eraser_done.ppm
+26970 tap 240 216
+27120 log tapped
+33120 log save-5
+33270 tap 240 216
+33420 log tapped
+39420 log save-6
+39570 tap 240 216
+39720 log tapped
+45720 log save-7
+45820 shot /tmp/draw_shots/draw_undone.ppm
+45970 tap 26 216
+46120 log tapped
+46220 down 20 70
+46280 move 300 75
+46340 move 20 95
+46400 move 300 100
+46440 shot /tmp/draw_shots/draw_scribble.ppm
+46500 up
+52500 log save-8
+52600 down 45 158
+52660 move 100 150
+52720 move 150 100
+52760 shot /tmp/draw_shots/draw_pin_drag.ppm
+52820 up
+58820 log save-9
+58920 down 282 160
+58980 move 240 100
+59040 move 200 60
+59100 up
+65100 log save-10
+65200 shot /tmp/draw_shots/draw_pins_dropped.ppm
+65300 down 176 100
+65360 move 176 130
+65420 up
+71420 log save-11
+71520 log tb-begin
+71670 tap 80 216
+71820 log tapped
+71920 down 80 215
+71980 move 80 150
+72040 move 120 100
+72100 move 200 120
+72160 up
+72260 down 20 20
+72320 move 100 100
+72380 move 160 70
+72440 up
+72540 down 300 20
+72600 move 200 100
+72660 up
+72760 down 26 192
+72820 move 100 120
+72880 up
+79880 log tb-end
+79980 down 230 140
+80040 move 280 140
+80100 up
+86100 log save-12
+86200 shot /tmp/draw_shots/draw_final.ppm
+86400 quit

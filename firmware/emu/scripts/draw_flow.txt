@@ -1,0 +1,20 @@
+# Draw screen navigation: menu chip -> menu overlay -> back to Draw (level kept), Play button saves, back chip saves.
+# Run:  cd firmware && EMU_START=draw EMU_SLOT=6 EMU_FS=/tmp/fs_flow EMU_SCRIPT=emu/scripts/draw_flow.txt SDL_VIDEODRIVER=dummy .pio/build/emu/program
+# Expected log: one [level crc ...] when Play is pressed, one more when the back chip is pressed; "[log ...]" markers in between.
+500 down 100 100
+560 move 200 60
+620 up
+800 log menu-open
+900 tap 296 24
+1300 shot /tmp/draw_shots/flow_menu.ppm
+1400 key back
+1800 log back-from-menu
+1900 shot /tmp/draw_shots/flow_draw_again.ppm
+2000 down 60 120
+2060 move 260 120
+2120 up
+2300 log play-pressed
+2400 tap 294 216
+2800 shot /tmp/draw_shots/flow_play.ppm
+3000 log done-play
+3100 quit
