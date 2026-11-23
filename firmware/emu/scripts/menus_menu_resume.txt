@@ -1,0 +1,3 @@
+# Menu from Play: Resume -> Play
+100 tap 64 96
+400 quit

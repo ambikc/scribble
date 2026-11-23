@@ -1,0 +1,3 @@
+# Title -> Play opens the last played level (EMU_FS settings lastSlot). Start on the title.
+100 tap 196 216
+500 quit

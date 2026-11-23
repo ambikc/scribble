@@ -1,0 +1,12 @@
+# Title: every button. Fresh EMU_FS (lessons in slots 0-2). Run by emu/run_menus_tests.sh; shots go to /tmp/scribble_menus/.
+100 log title
+500 shot /tmp/scribble_menus/title.ppm
+700 tap 296 24
+900 log sound-cycled
+1100 tap 36 216
+1300 key back
+1500 tap 120 216
+1700 key back
+1900 tap 280 216
+2100 key back
+2300 quit

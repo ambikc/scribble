@@ -1,0 +1,3 @@
+# Menu from Play: Edit -> Draw
+100 tap 160 96
+400 quit

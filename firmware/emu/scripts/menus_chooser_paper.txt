@@ -1,0 +1,9 @@
+# Chooser on a fresh EMU_FS, standupSeen = false. Start: EMU_START=chooser. Paper -> stand-up guide; back returns to the chooser;
+# Finger -> a new level in the first empty slot (3), in Draw. Back from the chooser -> Picker.
+100 log chooser
+300 shot /tmp/scribble_menus/chooser2.ppm
+500 tap 84 140
+800 key back
+1000 tap 24 24
+1300 key back
+1500 quit
