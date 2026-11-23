@@ -49,8 +49,9 @@ class Game {
   // ---- shared services, available to every screen --------------------------------------------------------
   Renderer& r; UI& ui; Audio& audio; LevelStore& store; Input& input; Camera* cam;
   Screen screen = Screen::Title;
-  float screenT = 0;                                 // seconds in this screen
-  uint32_t nowMs = 0;
+  float screenT = 0;                                 // seconds in this screen (the first tick after go() sees one tick, ~0.017)
+  float t = 0;                                       // seconds since begin(): for idle animations (title ball, win rays, pulses)
+  uint32_t nowMs = 0;                                // millis() at the start of this tick
   Screen menuFrom = Screen::Draw;                    // which screen the menu overlay returns to (Draw or Play)
   Screen cameFrom = Screen::Title;                   // where "back" in the camera flow goes
 
@@ -62,7 +63,7 @@ class Game {
   PlayState play; DrawState drawS; MenusState menus; PaperState paper;
 
   // ---- core helpers (game_core.cpp) ---------------------------------------------------------------------
-  void go(Screen s);
+  void go(Screen s);                                 // switch screen: resets screenT, starts the 0.15 s paper fade-in
   void say(const char* text);                        // toast for ~2.2 s
   void chip(const char* id, Icon icon, int x, const Btn* extra = nullptr);
   void chipBack(const Btn* extra = nullptr, Icon icon = Icon::Back);
@@ -72,19 +73,24 @@ class Game {
   Icon soundIcon() const;
   void cycleSound();
   void spawn(int n, float x, float y, const uint16_t* colors, int nColors, float speed, float life, int size = 2, int kind = 0);
-  void updateFx(float dt);                           // particles + toast + transitions (calls into play fx via fxStep hook)
-  void drawParts();
+  void updateFx(float dt);                           // particles + toast + transition + the play fx timers (playFxStep); tick() calls it
+  void playFxStep(float dt);                         // weak default: decays the PlayState fx timers; the Play agent may define its own
+  void drawParts();                                  // idempotent per frame: draw() calls it after the screen unless the screen already did
   void saveCurrent();
   void markEdited();
   void openLevel(int slotIndex, bool play);          // load from the store; play ? startPlay : go(Draw)
   void newInSlot(int slotIndex);
   void startPlay();
-  void goBack();
+  void goBack();                                     // "up one step" for the emulator's Esc key (the device uses the back chip)
+  void leaveCamera();                                // back out of the paper flow: to the Chooser if it came from there, else the Title
+  void flash(uint16_t color, float seconds);         // full-screen flash that fades out (the shutter): drawn over every screen but Play (which draws its own)
   const Level& currentLevel() const { return level; }
+  uint32_t levelSerial = 0;                          // +1 every time openLevel() loads a level: Draw resets its undo/ghost state when it changes
 
   Particle parts[MAX_PARTICLES]; int nParts = 0;
   struct Toast { char text[48] = ""; float t = 0; } toast;
   float transition = 0;
+  bool partsDrawn = false;                           // set by drawParts(), cleared at the start of draw()
 
   // ---- screens: implemented in the files listed at the top -----------------------------------------------
   void tickTitle(const InputState&);      void drawTitle();
