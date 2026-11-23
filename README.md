@@ -31,7 +31,7 @@ More in [sim/README.md](sim/README.md).
 | [`sim/`](sim/) | The browser simulator (TypeScript, Vite, canvas, 320 × 240 shown at 3×) |
 | [`firmware/`](firmware/) | PlatformIO project for the CoreS3: the portable C++ core, native tests, and the hardware-check app ([README](firmware/README.md)) |
 | [`shared/constants.json`](shared/constants.json) | One source of truth for physics, layout and vision numbers; `node tools/gen-config.mjs` writes `sim/src/config.ts` and `shared/generated/config.h` |
-| [`shared/levels/`](shared/levels/), [`shared/golden/`](shared/golden/) | Built-in `.scrb` levels and golden physics vectors the firmware tests replay (`shared/generated/golden.h`) |
+| [`shared/levels/`](shared/levels/), [`shared/golden/`](shared/golden/) | Built-in `.scrb` levels, golden physics vectors and synthetic template photos with the expected vision results; the firmware tests replay them (`shared/generated/golden.h`, `vision_golden.h`) |
 | [`tools/template/`](tools/template/) | Generates the printable A4 level template PDF |
 
 ## How the pieces fit

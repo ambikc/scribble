@@ -6,7 +6,7 @@ shown at **3×**. It runs the same physics, level format and paper-vision pipeli
 ```bash
 npm install
 npm run dev        # development server
-npm test           # 44 unit tests: level format, physics, golden vectors, vision round-trips
+npm test           # 56 unit tests: level format, physics, golden vectors (physics and vision), vision round-trips
 npm run build      # typecheck + production build into dist/
 ```
 
@@ -46,5 +46,5 @@ npm run build      # typecheck + production build into dist/
 | `vision.worker.ts` | runs `vision.ts` off the main thread (the firmware's vision task) | task on core 0 |
 
 Scripts: `scripts/vision-report.ts` (sweep the synthetic camera and print how well levels are recovered),
-`scripts/make-golden.ts` (regenerate `shared/levels` and `shared/golden`), `scripts/e2e-smoke.cjs` (drive the built page
+`scripts/make-golden.ts` and `scripts/make-vision-golden.ts` (regenerate `shared/levels`, `shared/golden` and the generated headers; `npm run golden`), `scripts/e2e-smoke.cjs` (drive the built page
 through every screen with Playwright).

@@ -389,7 +389,7 @@ flowchart LR
     L --> D
 ```
 
-Stages 3–10 are integer maths on small arrays (no OpenCV). The only floating point is solving the homography (stage 2); its result is rounded to 16.16 fixed point before the per-pixel work, so the C++ and TypeScript versions agree to within a pixel.
+Everything per pixel is integer maths on small arrays (no OpenCV): the mark threshold, the warp, stages 3–10. Floating point (`double`) is used only on a handful of numbers per capture (the blob statistics, the quad search, the sub-pixel mark centres, the 8 × 8 homography solve, the live check) and only with `+ − × ÷ √`, which are exactly rounded everywhere. The homography is rounded to fixed point before the warp (16.16, and 2.30 for the two perspective terms, which are about 10⁻⁴), so the C++ and TypeScript versions give **identical bytes**.
 
 ### 5.4 Step by step
 
@@ -456,14 +456,10 @@ Stages 3–10 are integer maths on small arrays (no OpenCV). The only floating p
 | Buffer | Bytes |
 |--------|------:|
 | Camera frame buffers: 2 × VGA RGB565 (640×480×2) | 1,228,800 |
-| Mark-finding scratch: QVGA gray 76,800 + integral image (u32) 307,200 + component labels (u16) 153,600 | 537,600 |
-| Straightened photo kept for Review (RGB565 320×192) | 122,880 |
-| `ink` strength (u8) | 61,440 |
-| `colour class` (u8) | 61,440 |
-| `labels` (u8: none/ground/spike/bouncy) | 61,440 |
-| Morphology scratch | 61,440 |
-| Paper grid, homography, tables | < 1,000 |
-| **Vision + camera total** | **≈ 2.1 MB** (see §8) |
+| `VisionWork`, kept for Review: straightened photo (RGB565 320×192) 122,880 + `ink` 61,440 + `colour class` 61,440 + `labels` 61,440 + marks | 307,292 |
+| `VisionWork`, scratch shared by every stage (a union): marks 463,044 (QVGA gray 76,800 + mask 76,800 + integral image / flood stack 309,444); paper estimate 122,880; clean-up 307,200 (3 masks + flood stack) | 463,044 |
+| Paper grid, homography, tables (stack) | < 5,000 |
+| **Vision + camera total** | **≈ 2.0 MB** (see §8); `sizeof(VisionWork)` = 770,336, measured by the native test |
 
 ### 5.7 The live Camera check (the calibration screen)
 
@@ -487,14 +483,14 @@ The browser simulator renders a known level onto the printed template through a 
 | Situation | Marks found | Ground | Spike | Bouncy | Live check says |
 |-----------|:-----------:|-------:|------:|-------:|-----------------|
 | 35 / 40 / 45 / 50 cm | yes | 0.98 / 0.98 / 0.98 / 0.97 | 1.00 | 1.00 | distance **35 / 40 / 45 / 50 cm** (exact); 50 cm: Distance yellow |
-| yaw 10° / **20°** | yes | 0.97 / 0.95 | 1.00 / 0.96 | 1.00 / 0.96 | Level **yellow** at 20° |
+| yaw 10° / **20°** | yes | 0.98 / 0.92 | 1.00 / 1.00 | 1.00 / 1.00 | Level **yellow** at 20° |
 | yaw 30° | **no** → centre-crop | 0.03 | — | — | no marks |
-| yaw 15°, pitch −10° | yes | 0.98 | 1.00 | 1.00 | all green |
+| yaw 15°, pitch −10° | yes | 0.97 | 1.00 | 1.00 | all green |
 | rolled 12°, upside down (ring) | yes | 0.98 | 1.00 | 1.00 | all green |
 | dim light (45 %), uneven light 40 %, hard shadow | yes | 0.97 / 0.98 / 0.96 | 1.00 | 1.00 | Light yellow when dim |
 | sensor noise σ = 12 | yes | 0.97 | 1.00 | 1.00 | — |
 | defocus (3 px blur) | yes | 0.80 | 0.98 | 0.99 | Sharp **yellow** (edge 2.7 px) |
-| no marks (plain sheet) | no → centre-crop | 0.34 | 0.05 | 0.11 | no marks |
+| no marks (plain sheet) | no → centre-crop | 0.34 | 0.11 | 0.11 | no marks |
 
 **Read this with care:** it is a *synthetic* camera and a *clean* drawing, so it proves the algorithm and the thresholds are self-consistent, not that a real GC0308 and a real child's crayon behave the same. Real photos (Step 6/7 of the build plan) are the test that counts.
 
@@ -510,7 +506,7 @@ The browser simulator renders a known level onto the printed template through a 
 | **Poor light** | Low contrast; noise | Light light; thinner/thicker ink; automatic retry (below) |
 | **Shadows** | A soft shadow is divided out by the paper estimate; a *sharp* shadow edge (a hand, the device) can leave a false dark band up to ~16 px wide | Light light; Retake; fix in Edit. A stronger fix is a stretch item |
 | **Glare on waxy crayon** | Highlights drop ink pixels | The close step bridges small gaps; the Light light warns about glare |
-| **Tilted page** | Perspective | Corrected by the four marks: **±20° works** in the simulator (95 % match); at **30° the marks are no longer found** and it falls back to a centre-crop. The Level light turns yellow beyond ±15° |
+| **Tilted page** | Perspective | Corrected by the four marks: **±20° works** in the simulator (92 % match); at **30° the marks are no longer found** and it falls back to a centre-crop. The Level light turns yellow beyond ±15° |
 | **A mark hidden** (a thumb over a corner, a smudge) | Marks not found | Falls back to a centre-crop, flagged; Retake |
 | **Print scale wrong** ("Fit to page") | Distance reads wrong; world scale off | The 10 cm check line on the sheet; the *world* mapping uses the marks, so the level itself is still right |
 | **Lens smudge** | Everything soft | Sharp light → wipe the lens |
@@ -690,11 +686,11 @@ Rest on a flat floor stays still; roll at 150 px/s for 1 s over flat ground → 
 | Item | Bytes |
 |------|------:|
 | Camera frame buffers 2 × VGA RGB565 (640×480×2) | 1,228,800 |
-| Vision workspace: mark-finding scratch 537,600 + straightened photo and masks 368,640 (§5.6) | 906,240 |
+| Vision workspace `VisionWork` (§5.6) | 770,336 |
 | `scene` sprite | 153,600 |
 | `fb[0]`, `fb[1]` sprites | 307,200 |
 | Undo ring: 8 snapshots × 23,104 | 184,832 |
-| **Total** | **≈ 2,780,672 (≈ 2.65 MiB, ~33 %)** |
+| **Total** | **≈ 2,644,768 (≈ 2.52 MiB, ~32 %)** |
 
 > Camera buffers are live only in the Camera screens; the vision workspace only while `Processing`/Review. They could share memory with the undo ring (Draw is not active at the same time) if PSRAM ever gets tight. At 33 % it should not.
 
@@ -741,9 +737,10 @@ scribble/
 └── firmware/                   PlatformIO project (see firmware/README.md)
     ├── platformio.ini          env cores3 (the device) and env native (PC unit tests)
     ├── partitions_16mb.csv     app 3 MB, OTA 3 MB, LittleFS ≈ 9.9 MB
-    ├── lib/core/src/           the portable core: level.h/.cpp, physics.h/.cpp (vision next)
+    ├── lib/core/src/           the portable core: level.h/.cpp, physics.h/.cpp, vision.h/.cpp
     ├── src/main.cpp            today: the day-one hardware-check app (build-plan Steps 1–3)
-    └── test/test_core/         native Unity tests against shared/generated/golden.h
+    ├── test/test_core/         native Unity tests against shared/generated/golden.h
+    └── test/test_vision/       native Unity tests against shared/golden/vision_frames.bin + shared/generated/vision_golden.h
 ```
 
 ### 9.2 Portability rules
@@ -751,7 +748,7 @@ scribble/
 * **One constants file.** `shared/constants.json` generates `config.h` and `config.ts` (a ~30-line script), so a physics or vision value changes in exactly one place.
 * **Same names, same signatures.** `physics_step` ↔ `physicsStep`, same struct fields.
 * **Float discipline.** Physics state is `double` in C++ (JavaScript's number type) and both versions round to 32-bit float at the same assignment points (`Math.fround` in TS, `f()` in C++). Both use the same literal sin/cos table and `sqrt(x*x+y*y)` instead of `hypot` (sqrt is exactly rounded everywhere; hypot and the trig functions are not). Fractional constants are emitted as `constexpr double`. The golden tests allow ≤ 0.5 px over 600 ticks; measured on a PC the worst difference is **0.0000005 px** (the 6-decimal rounding of the golden file).
-* **Vision is integer maths except the homography solve** (float/double, once per capture), whose result is rounded to 16.16 fixed point before the per-pixel work. C++ and TypeScript therefore agree on the four mark positions to ≤ 0.1 px and on **≥ 99.5 % of mask pixels**; the golden tests assert exactly that (and byte-identical results for stages 3–10 given the same straightened page).
+* **Vision is integer maths per pixel** (mark threshold, warp, stages 3–10). The few doubles (blob statistics, quad search, sub-pixel centres, the homography solve, the live check) use only `+ − × ÷ √`, never `hypot`, `acos`, `atan2`, `cos`, `sin` or libm rounding (`atan2DegUp`, the `COS16`/`SIN16` tables and a `Math.round` clone replace them in both versions). The homography is rounded to 16.16 fixed point (2.30 for the two perspective terms) before the warp. The goal in this document was ≤ 0.1 px on the marks and ≥ 99.5 % identical mask pixels; the native golden tests (`pio test -e native -f test_vision`) in fact find the marks **bit-identical** and the straightened page, ink, colour classes, all three layers, the pins and the whole `.scrb` **byte-identical** on 11 synthetic photos (clean, tilted, dim, dark, faded + auto retry, noisy, upside-down, no marks, blank), and they check the live camera check the same way. Compile with `-ffp-contract=off` if you ever add `-mfma`.
 * **Bit order and endianness are fixed** (MSB first, little-endian) so `.scrb` files made in the browser load on the device and vice versa.
 * **Core code has no allocation, no globals, no I/O, no time or random calls.** All buffers are passed in.
 
