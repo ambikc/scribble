@@ -46,6 +46,10 @@ void Game::begin() {
 
 void Game::go(Screen s) {
   screen = s; screenT = 0; transition = 1;
+#ifdef EMU
+  static const char* const names[] = {"title", "picker", "chooser", "standup", "check", "countdown", "processing", "review", "draw", "play", "win", "menu"};
+  std::printf("[screen %s]\n", names[int(s)]);   // emulator only: scripts grep this to check the screen flow
+#endif
 }
 
 void Game::say(const char* text) {
