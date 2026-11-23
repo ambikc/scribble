@@ -1,0 +1,17 @@
+# End to end, negative control: the same drawn wall stops a ball that never jumps (no win).
+# start: chooser
+# expect: [screen play]
+# expect-not: [win slot]
+# expect-not: [screen win]
+100 tap 236 140
+600 shot OUT/draw0.ppm
+700 down 150 168
+740 move 150 150
+780 move 150 145
+820 up
+1000 shot OUT/draw1.ppm
+1200 tap 294 216
+1500 tilt 1
+1800 log nojump
+7000 shot OUT/end.ppm
+8000 quit
