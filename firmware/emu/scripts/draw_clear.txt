@@ -1,0 +1,18 @@
+# Menu > Clear (hold 0.8 s) from the Draw screen is undoable: stroke, save, menu, hold Clear, undo -> the first saved checksum comes back.
+# Run by emu/run_draw_tests.sh with EMU_START=draw EMU_SLOT=8. Expected [level crc] sequence: A (stroke), B (cleared), A (after undo).
+500 down 100 100
+560 move 200 60
+620 up
+7000 log stroke-saved
+7100 tap 296 24
+7600 shot /tmp/draw_shots/clear_menu.ppm
+7700 down 160 96
+8200 shot /tmp/draw_shots/clear_hold.ppm
+8700 up
+9000 log cleared
+9100 shot /tmp/draw_shots/clear_after.ppm
+15000 log cleared-saved
+15100 tap 240 216
+15400 shot /tmp/draw_shots/clear_undone.ppm
+21500 log undone-saved
+21600 quit

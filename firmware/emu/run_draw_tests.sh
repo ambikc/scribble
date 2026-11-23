@@ -45,6 +45,18 @@ print("pen clicks:", pen)
 if not all(pen.values()): ok = False; print("FAIL: a pen click is missing")
 sys.exit(0 if ok else 1)
 EOF
+FS2=$(mktemp -d /tmp/draw_fs.XXXXXX)
+EMU_START=draw EMU_SLOT=8 EMU_FS="$FS2" EMU_SCRIPT=emu/scripts/draw_clear.txt SDL_VIDEODRIVER=dummy .pio/build/emu/program > "$SHOTS/emu_clear.log" 2>&1
+python3 -I - "$SHOTS/emu_clear.log" <<'EOF' || rc=$?
+import re, sys
+got = re.findall(r"\[level crc ([0-9A-F]{8})\]", open(sys.argv[1]).read())
+if len(got) == 3 and got[0] == got[2] and got[1] != got[0]:
+    print("ok: menu Clear (hold) is undoable:", got)
+else:
+    print("FAIL: Clear/undo checksums", got); sys.exit(1)
+EOF
+rm -rf "$FS2"
+for f in clear_menu clear_hold clear_after clear_undone; do [ -f "$SHOTS/$f.ppm" ] && cp "$SHOTS/$f.ppm" "$SHOTS/draw_$f.ppm"; done
 python3 -I emu/make_sheet.py "$SHOTS"/draw_*.ppm "$SHOTS/draw_sheet.png" --cols 4 2>/dev/null && echo "contact sheet: $SHOTS/draw_sheet.png" || true
 rm -rf "$FS"
 exit $rc

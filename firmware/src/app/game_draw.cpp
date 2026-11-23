@@ -74,6 +74,9 @@ bool DrawState::ensureUndo() {
 }
 void DrawState::pushUndo(const Level& l) { if (ensureUndo()) undo.push(l); }
 
+/** Strong version of the weak hook in game_menus.cpp: the pause menu's Clear pushes an undo snapshot before it wipes the level. */
+void menusPushUndo(Game& g) { g.drawS.pushUndo(g.level); }
+
 // ---------------------------------------------------------------------------------------------------------------------
 void Game::tickDraw(const InputState& in) {
   DrawState& d = drawS;
@@ -82,7 +85,8 @@ void Game::tickDraw(const InputState& in) {
   // a different level was loaded (openLevel): the old undo history and the ghost belong to the old one
   if (d.serial != levelSerial) { d.serial = levelSerial; d.undo.clear(); d.ghostDone = false; d.menuSnapValid = false; }
   if (screenT < 0.02f) {                                     // first tick after go(Draw)
-    d.stroke.end(); d.pinDrag = Pin::None; d.idleSince = nowMs;
+    d.idleSince = nowMs;
+    if (!d.menuSnapValid) { d.stroke.end(); d.pinDrag = Pin::None; }   // back from the menu overlay: keep the stroke/pin state (it opens by a tap, so nothing is active anyway)
     if (d.menuSnapValid) {                                   // back from the menu overlay: did it change the level (Clear)? then make it undoable
       d.menuSnapValid = false;
       if (d.menuSnap && !snapEquals(level, *d.menuSnap)) {
