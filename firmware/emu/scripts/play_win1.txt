@@ -1,0 +1,13 @@
+# Lesson 1 (the Bridge, with its gap filled): tilt right, never jump, reach the flag.   run: emu/run_script.sh emu/scripts/play_win1.txt
+# start: play
+# slot: 3
+# levels: 3=bridge
+# expect: [win slot 3]
+# expect: [sfx win]
+# expect-not: [sfx jump]
+# expect-not: [sfx pop]
+200 tilt 0.5
+1000 shot OUT/rolling.ppm
+2450 shot OUT/celebrate.ppm
+4200 shot OUT/win.ppm
+6000 quit

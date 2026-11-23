@@ -1,0 +1,9 @@
+# A very busy level (half the world is ink): the cached scene must still look right. With EMU_TRACE=1 it prints the cost of the
+# static part per frame ([perf cached scene copy ..] or, with EMU_NOCACHE=1, [perf uncached ..]); only the ratio means anything.
+# run: EMU_TRACE=1 emu/run_script.sh emu/scripts/play_busy.txt
+# start: play
+# slot: 5
+# levels: 5=busy
+# expect: [shot
+100 shot OUT/busy.ppm
+2000 quit
