@@ -1,0 +1,22 @@
+# every page of the hardware-check app: take a screenshot, tap next
+100 shot /tmp/shots/p0.ppm
+200 tap 240 216
+400 shot /tmp/shots/p1.ppm
+500 tap 40 40
+700 shot /tmp/shots/p1b.ppm
+800 tap 240 216
+1000 shot /tmp/shots/p2.ppm
+1100 tap 160 100
+1400 shot /tmp/shots/p2b.ppm
+1500 tap 240 216
+1700 shot /tmp/shots/p3.ppm
+1800 tilt 0.5
+2000 shot /tmp/shots/p3b.ppm
+2100 tap 240 216
+2300 tilt 0.5
+3500 shot /tmp/shots/p4.ppm
+3600 tap 200 100
+4200 shot /tmp/shots/p4b.ppm
+4300 tap 240 216
+4500 shot /tmp/shots/p5.ppm
+4600 quit

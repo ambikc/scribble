@@ -13,6 +13,9 @@
 //
 // The game itself is NOT here yet; this is a measuring tool built on the same portable core (lib/core).
 #include <M5Unified.h>
+#include <cstdarg>
+#include <cstring>
+#include <cstdio>
 #include "config.h"
 #include "level.h"
 #include "physics.h"
@@ -52,17 +55,24 @@ static void bar(const char* left) {
   frame.drawString(left, 80, 216); frame.drawString("next >", 240, 216);
   frame.setTextDatum(top_left);
 }
+/** printf at (x, y) where each newline starts a new line at the SAME x (M5GFX's cursor would go back to x = 0). */
+static void text(int x, int y, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
+static void text(int x, int y, const char* fmt, ...) {
+  char buf[256]; va_list ap; va_start(ap, fmt); vsnprintf(buf, sizeof buf, fmt, ap); va_end(ap);
+  const int lh = frame.fontHeight() + 2; char* line = buf;
+  for (;;) { char* nl = strchr(line, '\n'); if (nl) *nl = 0; frame.setCursor(x, y); frame.print(line); y += lh; if (!nl) break; line = nl + 1; }
+}
 static void title(const char* t) { frame.setFont(&fonts::FreeSansBold12pt7b); frame.setTextColor(PAL_INK); frame.setCursor(8, 6); frame.print(t); frame.setFont(&fonts::Font2); }
 
 // ---- page 0: INFO ---------------------------------------------------------------------------------------------
 static void pageInfo() {
-  frame.fillScreen(PAL_PAPER); title("Scribble Run: hardware check");
+  frame.fillScreen(PAL_PAPER); title("Hardware check");
   const uint16_t pal[9] = { PAL_PAPER, PAL_PAPER_DOT, PAL_INK, PAL_RED, PAL_BLUE, PAL_GREEN, PAL_YELLOW, PAL_WHITE, PAL_GREY };
   for (int i = 0; i < 9; i++) { frame.fillRect(8 + i * 34, 40, 30, 30, pal[i]); frame.drawRect(8 + i * 34, 40, 30, 30, PAL_INK); }
-  frame.setCursor(8, 82);
-  frame.printf("PSRAM %u KB (free %u KB)\nheap free %u KB\nflash %u MB\ndisplay %d x %d\n", unsigned(ESP.getPsramSize() / 1024), unsigned(ESP.getFreePsram() / 1024),
-               unsigned(ESP.getFreeHeap() / 1024), unsigned(ESP.getFlashChipSize() >> 20), int(M5.Display.width()), int(M5.Display.height()));
-  frame.print("Paper should look cream, not white;\nink nearly black. Tap 'next >' to continue.");
+  text(8, 80, "PSRAM %u KB (free %u KB)\nheap free %u KB\nflash %u MB\ndisplay %d x %d\n"
+       "Paper should look cream, not white;\nink nearly black. Tap 'next >' to continue.",
+       unsigned(ESP.getPsramSize() / 1024), unsigned(ESP.getFreePsram() / 1024), unsigned(ESP.getFreeHeap() / 1024),
+       unsigned(ESP.getFlashChipSize() >> 20), int(M5.Display.width()), int(M5.Display.height()));
   bar("(first page)");
 }
 
@@ -73,15 +83,15 @@ static void pageTouch(const m5::touch_detail_t& t) {
   if (millis() - rateT0 >= 1000) { rate = samples; samples = 0; rateT0 = millis(); }
   if (t.wasPressed() && t.y < 192) {
     const int col = (t.x - 16) / 48, row = t.y / 48;
-    if (t.x >= 16 && col < 6 && row < 4 && row * 6 + col == target) { hits++; target = (target + 7) % 24; M5.Speaker.tone(1200, 30); }
+    if (t.x >= 16 && col < 6 && row < 3 && row * 6 + col == target) { hits++; target = (target + 7) % 18; M5.Speaker.tone(1200, 30); }
     else { misses++; M5.Speaker.tone(300, 60); }
     Serial.printf("touch: hits %d misses %d rate %u Hz\n", hits, misses, unsigned(rate));
   }
   frame.fillScreen(PAL_PAPER);
-  for (int i = 0; i < 24; i++) { const int x = 16 + (i % 6) * 48, y = (i / 6) * 48; frame.fillRect(x + 2, y + 2, 44, 44, i == target ? PAL_GREEN : PAL_WHITE); frame.drawRect(x + 2, y + 2, 44, 44, PAL_INK); }
+  for (int i = 0; i < 18; i++) { const int x = 16 + (i % 6) * 48, y = (i / 6) * 48; frame.fillRect(x + 2, y + 2, 44, 44, i == target ? PAL_GREEN : PAL_WHITE); frame.drawRect(x + 2, y + 2, 44, 44, PAL_INK); }
   if (lastX >= 0) frame.fillCircle(lastX, lastY, 4, PAL_RED);
-  frame.setTextColor(PAL_INK); frame.setCursor(4, 176);
-  frame.printf("hit the GREEN square   hits %d  misses %d  (%d%%)  %u Hz", hits, misses, hits + misses ? hits * 100 / (hits + misses) : 0, unsigned(rate));
+  frame.setTextColor(PAL_INK);
+  text(8, 150, "Tap the GREEN square.\nhits %d  miss %d  (%d%%)  %u Hz", hits, misses, hits + misses ? hits * 100 / (hits + misses) : 0, unsigned(rate));
   bar("< back");
 }
 
@@ -94,13 +104,14 @@ static void runSpeed() {
   t0 = micros(); for (int i = 0; i < N * 10; i++) { small.pushSprite(140, 100); M5.Display.waitDMA(); } const float rect = (micros() - t0) / 1000.0f / (N * 10);
   t0 = micros(); for (int i = 0; i < N * 10; i++) { M5.Display.setClipRect(140, 100, 40, 40); frame.pushSprite(0, 0); M5.Display.clearClipRect(); M5.Display.waitDMA(); }
   const float clip = (micros() - t0) / 1000.0f / (N * 10);
-  snprintf(speedText, sizeof speedText, "full 320x240 push from PSRAM: %.1f ms (%.0f fps)\n40x40 push from SRAM: %.2f ms\n40x40 clip of the PSRAM sprite: %.2f ms\n\nDesign assumed ~31 ms full, <1.5 ms for 40x40.", full, 1000.0f / full, rect, clip);
+  if (full <= 0) snprintf(speedText, sizeof speedText, "No real clock here (emulator).\nMeasure on the device.");
+  else snprintf(speedText, sizeof speedText, "full 320x240 push, PSRAM: %.1f ms (%.0f fps)\n40x40 push, SRAM: %.2f ms\n40x40 clip, PSRAM sprite: %.2f ms\n\nDesign assumed ~31 ms full, <1.5 ms 40x40.", full, 1000.0f / full, rect, clip);
   Serial.printf("speed: full %.2f ms, 40x40 sram %.3f ms, 40x40 clip %.3f ms\n", full, rect, clip);
   small.deleteSprite();
 }
 static void pageSpeed(const m5::touch_detail_t& t) {
   if (t.wasPressed() && t.y < 192) { frame.fillScreen(PAL_YELLOW); runSpeed(); }
-  frame.fillScreen(PAL_PAPER); title("Display speed"); frame.setCursor(8, 40); frame.print(speedText); bar("< back");
+  frame.fillScreen(PAL_PAPER); title("Display speed"); text(8, 40, "%s", speedText); bar("< back");
 }
 
 // ---- page 3: TILT ---------------------------------------------------------------------------------------------
@@ -109,11 +120,11 @@ static void pageTilt(const m5::touch_detail_t& t) {
   const double tilt = tiltTick();
   frame.fillScreen(PAL_PAPER); title("Tilt sensor (BMI270)");
   frame.setCursor(8, 36); frame.printf("ax %+.2f g   ay %+.2f g   az %+.2f g", acc[0], acc[1], acc[2]);
-  frame.setCursor(8, 54); frame.printf("rolling axis: %c%c   (tap left: axis, right: sign)", tiltSign > 0 ? '+' : '-', "xyz"[tiltAxis]);
+  frame.setCursor(8, 54); frame.printf("rolling axis %c%c   tap left: axis, right: sign", tiltSign > 0 ? '+' : '-', "xyz"[tiltAxis]);
   frame.drawRect(20, 90, 280, 30, PAL_INK); frame.fillRect(159, 86, 2, 38, PAL_INK);
   const int w = int(tilt * 138); frame.fillRect(w >= 0 ? 160 : 160 + w, 92, std::abs(w), 26, std::fabs(tilt) >= 0.999 ? PAL_GREEN : PAL_BLUE);
-  frame.setCursor(8, 132); frame.printf("tilt %+.2f   Tilt the RIGHT edge DOWN: the bar must grow right.", tilt);
-  frame.setCursor(8, 150); frame.printf("upright check: gravity mostly on %c", std::fabs(acc[0]) > std::fabs(acc[1]) ? (std::fabs(acc[0]) > std::fabs(acc[2]) ? 'x' : 'z') : (std::fabs(acc[1]) > std::fabs(acc[2]) ? 'y' : 'z'));
+  text(8, 130, "tilt %+.2f\nRight edge DOWN must grow the bar right.", tilt);
+  text(8, 166, "gravity mostly on %c", std::fabs(acc[0]) > std::fabs(acc[1]) ? (std::fabs(acc[0]) > std::fabs(acc[2]) ? 'x' : 'z') : (std::fabs(acc[1]) > std::fabs(acc[2]) ? 'y' : 'z'));
   static uint32_t lastLog = 0; if (millis() - lastLog > 500) { lastLog = millis(); Serial.printf("imu: ax %+.3f ay %+.3f az %+.3f  tilt %+.3f\n", acc[0], acc[1], acc[2], tilt); }
   bar("< back");
 }
@@ -158,7 +169,7 @@ static void pageBall(const m5::touch_detail_t& t) {
   if (world.state != ST_DYING) { frame.fillCircle(int(world.ball.x), int(world.ball.y), BALL_RADIUS - 1, PAL_YELLOW); frame.drawCircle(int(world.ball.x), int(world.ball.y), BALL_RADIUS - 1, PAL_INK); }
   frames++; if (millis() - fpsT0 >= 1000) { fps = frames * 1000.0f / (millis() - fpsT0); frames = 0; fpsT0 = millis(); physUs = physTicks ? float(physUsSum) / physTicks : 0; physUsSum = physTicks = 0;
     Serial.printf("ball: %.1f fps (full-screen pushes), physics %.0f us/tick\n", fps, physUs); }
-  frame.setTextColor(PAL_INK); frame.setFont(&fonts::Font2); frame.setCursor(4, 2); frame.printf("tilt to roll, tap to jump   %.0f fps   physics %.0f us/tick", fps, physUs);
+  frame.setTextColor(PAL_INK); frame.setFont(&fonts::Font2); frame.setCursor(4, 2); frame.printf("tilt=roll tap=jump  %.0f fps  %.0f us", fps, physUs);
   bar("< back");
 }
 
@@ -179,13 +190,13 @@ void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
   Serial.begin(115200);
-  M5.Display.setRotation(1);
+  // CoreS3 panel is natively 320 x 240 (landscape) at rotation 0; do not rotate.
   M5.Speaker.setVolume(volume);
   frame.setPsram(true); frame.setColorDepth(16);
   if (!frame.createSprite(SCREEN_W, SCREEN_H)) Serial.println("could not allocate the frame sprite in PSRAM");
   scene.setPsram(true); scene.setColorDepth(16); scene.createSprite(WORLD_W, WORLD_H);
   rateT0 = fpsT0 = millis();
-  Serial.println("Scribble Run hardware check. Pages: INFO TOUCH SPEED TILT BALL SOUND");
+  Serial.printf("Scribble Run hardware check. display %d x %d. Pages: INFO TOUCH SPEED TILT BALL SOUND\n", int(M5.Display.width()), int(M5.Display.height()));
 }
 
 void loop() {

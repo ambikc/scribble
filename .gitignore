@@ -4,3 +4,4 @@ sim/public/scribble-run-level-template-a4.pdf
 *.log
 .DS_Store
 firmware/.pio/
+.claude/worktrees/
