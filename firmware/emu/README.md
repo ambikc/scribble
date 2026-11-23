@@ -14,7 +14,8 @@ under it is replaced by [`include/M5Unified.h`](include/M5Unified.h):
 | Speaker | `tone()` is printed as `[tone 550 Hz 60 ms]`, `playWav()` as `[wav 16044 bytes]`, `setVolume()` as `[volume 64]`. The game's audio adds `[sfx jump]` and `[say three wav]` / `[say three tone]` lines |
 | LittleFS | a plain folder: env `EMU_FS`, default `./emu_fs` (created if missing). The game keeps `slotN.scrb`, `settings.json` there and looks for `three.wav` `two.wav` `one.wav` `snap.wav` (16 kHz mono) in it |
 | Clock | real clock; **virtual 60 Hz clock when a script runs** (one loop pass = one tick) |
-| Camera, microSD, battery, RTC, DMA timing | not emulated (camera: use the browser simulator or the test photos) |
+| Camera (GC0308) | **test photos** (see "The camera and the paper flow" below); no sensor, no exposure, no focus |
+| microSD, battery, RTC, DMA timing | not emulated |
 
 Timings from the emulator mean nothing. Use it for **logic, layout, screen flow and screenshots**; measure speed on the device.
 
@@ -60,3 +61,24 @@ A script is a text file, one command per line, times in **virtual milliseconds**
 `emu/scripts/smoke.txt` visits every page of the hardware-check app; `emu/scripts/io.txt` exercises input, sound and the
 level store through the game (taps, a drag, tilt, upright, keys, volume cycling, the win jingle). Output lines such as `page BALL` and `[tone ...]`
 are plain text on stdout, so a test can `grep` them.
+
+## The camera and the paper flow
+
+`app/camera.cpp` has an emulator half (`#ifdef EMU`): `Camera` serves test photos, the paper screens (`app/game_paper.cpp`) run unchanged.
+
+| What | How |
+|---|---|
+| The photo | the synthetic template photos of `shared/golden/vision_frames.bin`, by case name from `shared/generated/vision_golden.h`: `clean tilt dim dark faded noisy harsh upside-down tilt-noisy nomarks blank`. Choose with env `EMU_PHOTO_CASE=tilt` or the script command `photo tilt` (it can change in the middle of a run); default `clean` |
+| Your own photo | env `EMU_PHOTO=<file>` (a P6 PPM of any size, cover-fitted into 640 x 480 like the browser simulator does, or a raw 640 x 480 RGB565 little-endian dump; a phone photo of the printed template works once converted to PPM). `python3 emu/photo_from_golden.py 1 /tmp/tilt.ppm --raw` writes a stored photo in both formats |
+| The live view | settles like a person adjusting the paper: out of focus for `EMU_SETTLE_MS` (default 900 ms) after the camera starts, then sharp, with frame-to-frame noise (`EMU_NOISE`, default +-2 levels), about 15 frames a second. The lights go green after the settling and GO pulses 0.5 s later. `EMU_START_MS` (150) = the camera's start-up time, `EMU_GRAB_MS` (200) = how long the three-frame snap takes, `EMU_CAMERA_FAIL=1` = a camera that does not answer |
+| The snap | returns the stored photo exactly (the average of three identical frames), so the recovered level has the same CRC as the golden vectors |
+| Output lines | `[camera on]`, `[camera off]`, `[camera exposure locked]`, `[paper lights ...]` (when the lights change), `[paper vision N ms ...]` (this computer's time: meaningless for the device), `[paper level crc XXXXXXXX]` (the `.scrb` CRC of the recovered level: the number `shared/golden/vision_vectors.json` lists as `crc.scrb`), `[paper accept slot N]` |
+| Vision | runs inline in the tick that starts it (deterministic scripts); on the device it is a FreeRTOS task on core 0 |
+
+```bash
+cd firmware && pio run -e emu && emu/paper_test.sh     # about 65 checks over every golden photo and the whole flow; exit code 0 = all passed
+OUT=/tmp/shots emu/paper_test.sh                       # keep the screenshots (PPM) and logs there; python3 emu/make_sheet.py /tmp/shots/clean_*.ppm /tmp/shots/s.png
+```
+
+`emu/scripts/paper_*.txt` are the scripts (`@OUT@`, `@CASE@`, `@NAME@` are replaced by `paper_test.sh`, which also prepends `photo <case>`).
+The stand-up screen needs `upright 1` in a script (the emulated IMU starts "flat on the table").

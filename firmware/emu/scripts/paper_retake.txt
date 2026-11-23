@@ -1,0 +1,15 @@
+# Exits and the camera power: Stop in the countdown, Retake from the review, and leaving the paper flow with the Esc key
+# (nobody tells the camera, it must switch itself off 2 s later). EMU_START=check.
+100 upright 1
+2300 tap 250 216
+3000 tap 24 24
+3400 shot @OUT@/retake_after_stop.ppm
+3500 log back-in-check
+4500 tap 250 216
+9500 shot @OUT@/retake_review.ppm
+9600 tap 32 216
+9900 shot @OUT@/retake_check.ppm
+10000 key back
+10500 log left-the-paper-flow
+13000 log two-seconds-later
+13200 quit

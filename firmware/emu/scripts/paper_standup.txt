@@ -1,0 +1,10 @@
+# Stand-up guide: lying flat, Ready waits ("STAND ME UP"); once the device is upright it turns green and leads to the check.
+# EMU_START=standup, the IMU starts "flat on the table".
+300 shot @OUT@/standup_flat.ppm
+400 tap 160 216
+700 log still-on-standup
+800 upright 1
+1100 shot @OUT@/standup_upright.ppm
+1200 tap 160 216
+1700 shot @OUT@/standup_to_check.ppm
+1800 quit

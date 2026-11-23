@@ -1,0 +1,44 @@
+# The whole paper flow with the clean synthetic photo:  standup -> check -> countdown -> processing -> review -> accept -> play.
+# Run by emu/paper_test.sh (EMU_START=standup; @OUT@ is replaced by the screenshot folder). Times are virtual milliseconds.
+100 upright 1
+300 shot @OUT@/clean_standup.ppm
+# Ready (the bottom bar). The camera starts a moment later and is out of focus for the first ~1 s, so the lights are not green yet
+700 tap 160 216
+1000 shot @OUT@/clean_check_a.ppm
+# focus settled, all four lights green, GO still yellow until they have been green for 0.5 s
+1900 shot @OUT@/clean_check_b.ppm
+# hold the ? chip for 2 s: the calibration numbers
+2000 down 296 24
+4100 up
+4300 shot @OUT@/clean_check_numbers.ppm
+# a short tap on ? opens the stand-up guide; come back with Ready
+4400 tap 296 24
+4700 shot @OUT@/clean_standup2.ppm
+4800 tap 160 216
+6000 shot @OUT@/clean_check_c.ppm
+# GO
+6100 tap 250 216
+6600 shot @OUT@/clean_cd3.ppm
+7700 shot @OUT@/clean_cd2.ppm
+8700 shot @OUT@/clean_cd1.ppm
+9500 shot @OUT@/clean_snap.ppm
+9900 shot @OUT@/clean_processing.ppm
+# review: the layers appear one by one
+10400 shot @OUT@/clean_review_reveal.ppm
+11200 shot @OUT@/clean_review.ppm
+# thinner ink (threshold 77 -> 90), thicker twice (-> 77 -> 64)
+11300 tap 96 216
+11700 shot @OUT@/clean_review_less.ppm
+11800 tap 160 216
+12100 tap 160 216
+12500 shot @OUT@/clean_review_more.ppm
+# drag the Start pin to the right (the pins are placed at about (22, 103) and (297, 112))
+12600 down 22 103
+12650 move 40 100
+12700 move 70 90
+12750 shot @OUT@/clean_review_drag.ppm
+12800 up
+# Looks good: saved into the first empty slot (3, after the three lessons), straight into Play
+13000 tap 256 216
+13400 shot @OUT@/clean_play.ppm
+13600 quit

@@ -1,0 +1,8 @@
+# The camera is slow to start (EMU_START_MS=1500) or does not answer (EMU_CAMERA_FAIL=1): the check says so, GO tells why.
+# EMU_START=check.
+100 upright 1
+400 shot @OUT@/@NAME@_a.ppm
+600 tap 250 216
+900 shot @OUT@/@NAME@_toast.ppm
+2200 shot @OUT@/@NAME@_b.ppm
+2300 quit
