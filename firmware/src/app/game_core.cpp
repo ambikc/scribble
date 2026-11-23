@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 
 namespace scribble {
 
@@ -27,6 +28,20 @@ void Game::begin() {
   newWorld(play.world, level);
   slot = 0; dirtySave = false; levelIsStarter = false; nParts = 0; toast.t = 0; t = 0; nowMs = millis();
   go(Screen::Title);
+#ifdef EMU
+  // Emulator only: EMU_START=<screen> jumps straight to a screen so scripts can test one screen in isolation;
+  // EMU_SLOT=<0-9> is the level slot for draw / play / win / menu (default 0).
+  if (const char* st = std::getenv("EMU_START")) {
+    const int sl = std::getenv("EMU_SLOT") ? std::atoi(std::getenv("EMU_SLOT")) : 0;
+    struct { const char* n; Screen s; } tbl[] = {{"title", Screen::Title}, {"picker", Screen::Picker}, {"chooser", Screen::Chooser}, {"standup", Screen::Standup},
+      {"check", Screen::Check}, {"countdown", Screen::Countdown}, {"processing", Screen::Processing}, {"review", Screen::Review}};
+    if (!std::strcmp(st, "play")) openLevel(sl, true);
+    else if (!std::strcmp(st, "draw")) openLevel(sl, false);
+    else if (!std::strcmp(st, "win")) { openLevel(sl, true); go(Screen::Win); }
+    else if (!std::strcmp(st, "menu")) { openLevel(sl, true); menuFrom = Screen::Play; go(Screen::Menu); }
+    else for (auto& e : tbl) if (!std::strcmp(st, e.n)) go(e.s);
+  }
+#endif
 }
 
 void Game::go(Screen s) {
