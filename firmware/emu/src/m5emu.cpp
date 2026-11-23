@@ -21,6 +21,7 @@ bool scriptDown = false; int scriptX = 0, scriptY = 0; float scriptTilt = 0;
 bool prevDown = false, uKeyWas = false;
 bool uprightOn = false;                    // the IMU reports "standing on its base" instead of "flat on the table"
 bool scriptKeyJump = false, scriptKeyBack = false;
+std::string photoNameStr;                  // the test photo the emulated camera serves (script command `photo <name>`); empty = the camera's own default
 const double FRAME_MS = 1000.0 / 60.0;
 
 // Emulated GPIOs (ACTIVE LOW, see M5GFX Panel_sdl: a key pulls its pin low while it is down).
@@ -42,7 +43,7 @@ void loadScript() {
     c.op = op;
     if (c.op == "tap" || c.op == "down" || c.op == "move") std::sscanf(line, "%*f %*s %d %d", &c.x, &c.y);
     else if (c.op == "tilt" || c.op == "upright") std::sscanf(line, "%*f %*s %f", &c.v);
-    else if (c.op == "shot" || c.op == "log" || c.op == "key" || c.op == "keydown" || c.op == "keyup") { std::sscanf(line, "%*f %*s %399s", a); c.a = a; }
+    else if (c.op == "shot" || c.op == "log" || c.op == "key" || c.op == "keydown" || c.op == "keyup" || c.op == "photo") { std::sscanf(line, "%*f %*s %399s", a); c.a = a; }
     script.push_back(c);
   }
   std::fclose(f);
@@ -74,6 +75,7 @@ void runScript() {
     }
     else if (c.op == "shot") { if (emu::writeScreenshot(c.a.c_str()) != 0) std::fprintf(stderr, "emu: screenshot %s failed\n", c.a.c_str()); else std::printf("[shot %s @ %.0f ms]\n", c.a.c_str(), vclockMs); }
     else if (c.op == "log") std::printf("[log %s @ %.0f ms]\n", c.a.c_str(), vclockMs);
+    else if (c.op == "photo") photoNameStr = c.a;
     else if (c.op == "quit") quit = true;
     else std::fprintf(stderr, "emu: unknown script command '%s'\n", c.op.c_str());
   }
@@ -85,6 +87,7 @@ unsigned long micros() { return haveScript ? (unsigned long)(vclockMs * 1000.0) 
 void delay(unsigned long ms) { if (!haveScript) lgfx::delay(ms); }
 
 bool emu::scriptActive() { return haveScript; }
+const char* emu::photoName() { return photoNameStr.c_str(); }
 bool emu::quitRequested() { return quit; }
 
 bool emu::keyHeld(emu::Key k) {

@@ -108,6 +108,7 @@ namespace emu {
 bool scriptActive();
 bool quitRequested();
 int writeScreenshot(const char* ppmPath);        // 320 x 240 binary PPM; returns 0 on success
+const char* photoName();                         // script command `photo <case>`: which test photo the emulated camera serves ("" = its default); see src/app/camera.h
 
 enum class Key { Jump, Back };                   // Space / W / Up and Escape, or the script's `key jump|back`
 bool keyHeld(Key k);
