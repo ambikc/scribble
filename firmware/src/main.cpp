@@ -12,6 +12,7 @@
 #include <LittleFS.h>
 #endif
 #include "app/game.h"
+#include "app/camera.h"
 
 using namespace scribble;
 
@@ -20,7 +21,8 @@ static UI ui;
 static Audio audio;
 static LevelStore store;
 static Input input;
-static Game game(renderer, ui, audio, store, input);
+static Camera camera;                            // paper mode: off until a paper screen asks for it (app/camera.h)
+static Game game(renderer, ui, audio, store, input, &camera);
 
 #ifndef EMU
 static const char* const FS_ROOT = "/littlefs";  // LittleFS mount point on the device
@@ -96,6 +98,7 @@ void loop() {
   }
 
   audio.update(now);
+  camera.update(now);                             // switches the camera off when no paper screen has asked for it lately
   game.draw();
   renderer.present();
   if (ticks == 0) delay(1);                       // faster than 60 Hz: let the idle task and USB run

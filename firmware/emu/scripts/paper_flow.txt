@@ -1,0 +1,9 @@
+# A short paper flow from the camera check to the review, for any photo case: the runner puts "photo <case>" in front.
+# Run by emu/paper_test.sh with EMU_START=check. GO is tapped after the lights have had time to turn green.
+100 upright 1
+2300 shot @OUT@/@CASE@_check.ppm
+2400 tap 250 216
+3300 shot @OUT@/@CASE@_countdown.ppm
+6300 shot @OUT@/@CASE@_processing.ppm
+7600 shot @OUT@/@CASE@_review.ppm
+7700 quit

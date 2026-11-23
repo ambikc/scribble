@@ -1,0 +1,7 @@
+# Never a dead end: if the IMU never says "upright" (wrong axis on the device), Ready works after 8 s anyway.
+# EMU_START=standup, the IMU stays "flat on the table".
+400 tap 160 216
+700 log not-yet
+8500 tap 160 216
+9300 shot @OUT@/standup_gate_check.ppm
+9400 quit
