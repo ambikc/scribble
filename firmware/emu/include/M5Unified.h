@@ -6,8 +6,10 @@
 //
 //   M5.Display   M5GFX over SDL, 320 x 240 (a window; under xvfb or SDL_VIDEODRIVER=dummy it is headless)
 //   M5.Touch     the mouse (left button = one finger)           | script: tap/down/move/up
-//   M5.Imu       arrow keys LEFT/RIGHT = tilt right/left edge down (+/- TILT_FULL g) | script: tilt <g>
-//   M5.Speaker   tone() is printed as "[tone <Hz> <ms>]" and counted (no sound)
+//   M5.Imu       arrow keys LEFT/RIGHT (or A/D) = tilt right/left edge down (+/- TILT_FULL g) | script: tilt <g>
+//                reports "flat on the table" (az = +0.97 g); key U or script `upright 1` = "standing on its base" (ay = -0.98 g)
+//   M5.Speaker   tone() is printed as "[tone <Hz> <ms>]", playWav() as "[wav <bytes> bytes]" (no sound)
+//   keys         Space / W = jump, Escape = back (emu::keyHeld) | script: key jump|back
 //   Serial, ESP, millis(), micros(), delay()
 //
 // With a script (env EMU_SCRIPT=file) time is VIRTUAL: every M5.update() advances 16.667 ms and delay() does nothing,
@@ -21,6 +23,7 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstddef>
+#include <cstring>
 
 // ---- Arduino-ish clock (virtual in script mode, real otherwise) -----------------------------------------------
 unsigned long millis();
@@ -57,7 +60,7 @@ struct touch_detail_t {
   bool isReleased() const { return !down; }
 };
 
-struct EmuTouch { touch_detail_t d; touch_detail_t getDetail() const { return d; } int getCount() const { return d.down ? 1 : 0; } };
+struct EmuTouch { touch_detail_t d; touch_detail_t getDetail(size_t = 0) const { return d; } int getCount() const { return d.down ? 1 : 0; } };
 
 struct imu_3d_t { float x = 0, y = 0, z = 0; };
 struct imu_data_t { imu_3d_t accel, gyro; };
@@ -68,13 +71,20 @@ struct EmuImu {
 };
 
 struct EmuSpeaker {
-  int tones = 0; int lastFreq = 0; int lastMs = 0; int volume = 64;
+  int tones = 0, wavs = 0; int lastFreq = 0; int lastMs = 0; int volume = 64;
   bool tone(float freq, uint32_t ms = 0xFFFFFFFF, int = -1, bool = true) {
     ++tones; lastFreq = int(freq); lastMs = int(ms);
-    std::printf("[tone %d Hz %u ms]\n", int(freq), unsigned(ms == 0xFFFFFFFFu ? 0u : ms)); return true;
+    std::printf("[tone %d Hz %u ms]\n", int(freq), unsigned(ms == 0xFFFFFFFFu ? 0u : ms)); std::fflush(stdout); return true;
+  }
+  // like M5Unified: plays a RIFF/WAVE image from memory (the buffer must stay valid while it plays). Here: validated and printed.
+  bool playWav(const uint8_t* wav, size_t len = ~size_t(0), uint32_t = 1, int = -1, bool = false) {
+    ++wavs;
+    const bool ok = wav && len >= 44 && !std::memcmp(wav, "RIFF", 4) && !std::memcmp(wav + 8, "WAVE", 4);
+    std::printf("[wav %u bytes%s]\n", unsigned(len == ~size_t(0) ? 0u : len), ok ? "" : " INVALID"); std::fflush(stdout); return ok;
   }
   void stop() {}
-  void setVolume(uint8_t v) { volume = v; }
+  void setVolume(uint8_t v) { volume = v; std::printf("[volume %d]\n", int(v)); std::fflush(stdout); }
+  uint8_t getVolume() const { return uint8_t(volume); }
   bool isPlaying() const { return false; }
 };
 
@@ -98,4 +108,10 @@ namespace emu {
 bool scriptActive();
 bool quitRequested();
 int writeScreenshot(const char* ppmPath);        // 320 x 240 binary PPM; returns 0 on success
+
+enum class Key { Jump, Back };                   // Space / W / Up and Escape, or the script's `key jump|back`
+bool keyHeld(Key k);
+
+/** The directory the game uses as its "LittleFS": env EMU_FS, or ./emu_fs; created when missing. No trailing slash. */
+const char* fsRoot();
 }

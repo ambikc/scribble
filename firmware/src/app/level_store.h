@@ -49,7 +49,7 @@ class LevelStore {
   /** Copy slot -> out (out must be non-null). Returns false if the slot is empty. */
   bool copyTo(int slot, Level& out) const;
  private:
-  char root_[96] = "";
+  char root_[200] = "";
   bool writeAtomic(const char* path, const uint8_t* data, size_t n);   // <path minus ext>.tmp + fflush + fsync + rename
   void loadSlot(int i);
   Level* ensureSlot(int i);                       // allocate slots[i] + thumbs[i] if needed (nullptr if out of memory)
