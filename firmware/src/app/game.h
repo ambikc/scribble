@@ -12,7 +12,7 @@
 //     game_draw.cpp    draw / edit         state: game_draw.h                                                     (Draw agent)
 //     game_menus.cpp   picker, chooser, menu overlay    state: game_menus.h                                      (Menus agent)
 //     game_paper.cpp   standup, check, countdown, processing, review   state: game_paper.h                       (Paper agent)
-//     game_stubs.cpp   weak do-nothing versions of every tickX/drawX, so the project always links. Real code OVERRIDES them;
+//     game_stubs.cpp   (removed: every screen is real now) weak do-nothing versions of every tickX/drawX, so the project always links. Real code OVERRIDES them;
 //                      delete the stub when you add the real function.
 // Shared data (level, slot, toast, particles) lives here in Game and is owned by the Core agent; ask before changing it.
 #pragma once

@@ -488,7 +488,9 @@ void Game::tickReview(const InputState& in) {
     W.start(Job::Rethreshold);
   } else if (!std::strcmp(hit, "good") && !paper.busy) {
     // save into the first empty slot (the last-opened slot if all ten are full), name it, and play it
-    int target = store.firstEmpty();
+    int target = menus.pendingSlot;                                    // the empty slot the Picker chose (modes.ts), else the first empty one
+    if (target < 0 || target >= SLOTS || store.slots[target]) target = store.firstEmpty();
+    menus.pendingSlot = -1;
     if (target < 0) { target = store.settings.lastSlot; if (target < 0 || target >= SLOTS) target = 0; char m[40]; snprintf(m, sizeof m, "All slots full: replaced %d", target + 1); say(m); }
     *paper.tmp = *paper.res;                                           // (not on the stack: a Level is 23 KB and the loop task has 8 KB)
     Level& lv = *paper.tmp;

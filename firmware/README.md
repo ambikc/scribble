@@ -2,7 +2,7 @@
 
 PlatformIO project. MIT licensed. Design: [`../docs/system-design.md`](../docs/system-design.md); plan: [`../docs/build-plan.md`](../docs/build-plan.md).
 
-## What is here today (build-plan Step 0)
+## What is here
 
 | Path | What |
 |------|------|
@@ -11,6 +11,7 @@ PlatformIO project. MIT licensed. Design: [`../docs/system-design.md`](../docs/s
 | `lib/core/src/level.*` | Level bitmaps, brush, `.scrb` encoder/decoder, CRC-32, thumbnail, built-in lessons. Port of `sim/src/level.ts` |
 | `lib/core/src/physics.*` | The ball. Expression-for-expression port of `sim/src/physics.ts` |
 | `lib/core/src/vision.*` | The vision pipeline and the live camera check (`visionProcess`, `visionRethreshold`, `visionLiveCheck`). Integer maths per pixel, all buffers in a caller-owned `VisionWork` (770,336 bytes: put it in PSRAM). Expression-for-expression port of `sim/src/vision.ts` |
+| `src/app/` | The game: input, audio, level store, renderer, UI, and every screen (`game_*.cpp`). Start with [`src/app/README.md`](src/app/README.md) |
 | `hwcheck/main.cpp` | **Hardware-check app** for Steps 1–3 (`pio run -e hwcheck`) |
 | `src/main.cpp` | The **game** entry point: `setup()` and the fixed 60 Hz `loop()` (see "Storage layout and the loop" below) |
 | `test/test_core/` | Native tests: files and physics must match the simulator (`shared/generated/golden.h`) |

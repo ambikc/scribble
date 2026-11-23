@@ -18,6 +18,31 @@ flowchart LR
 
 ---
 
+## Where we are
+
+Everything below was written **before the device arrived** and checked on the PC: the portable C++ core against the simulator
+(byte-identical files, physics and vision), and the whole game running in the **PC emulator** (`firmware/emu`, which runs the real
+firmware source on M5GFX's SDL display; see [firmware/emu/README.md](../firmware/emu/README.md)). **No step is ticked on a real
+CoreS3 yet**: that is what the device is for.
+
+| Step | Code | Checked in the emulator / on the PC | Needs the device for |
+|---|---|---|---|
+| 0 Toolchain | done | native tests, CI | CI green on GitHub |
+| 1 Screen and touch | hardware-check app (`pio run -e hwcheck`) | layout and flow | colours, push time, touch, his finger |
+| 2 Tilt | hardware-check app, `input.cpp` | filter maths (unit tests) | axis and sign, noise, feel |
+| 3 Physics and Play | `game_play.cpp` | scripted wins, pops, bounces, jump rules | feel, fps (display push is ~31 ms) |
+| 4 Finger drawing | `game_draw.cpp` | strokes byte-identical to the shared level code | latency, eraser cost |
+| 5 Saving and screens | `level_store.cpp`, title, picker, chooser, menu | saves, corrupt files, power-cut simulation, every flow | real power cuts on LittleFS |
+| 6 Camera and stand-up | `camera.cpp`, `game_paper.cpp` | golden photos give the exact golden levels | **everything about the camera** (pins, power, colour order, exposure) |
+| 7 Vision | `vision.cpp` | byte-identical to the simulator on 10 photo cases | speed on the S3 (software doubles), real photos |
+
+Not started: sound clips (`shared/audio/`), the microSD import/export, the second game mode, polish (Steps 8-10).
+The list of things the camera code **guesses** is in [hardware-notes.md](hardware-notes.md) under "Camera bring-up".
+
+![Every main screen, from the PC emulator](assets/firmware-emulator-screens.png)
+
+---
+
 ## Before the device arrives (this week)
 
 These need no hardware.

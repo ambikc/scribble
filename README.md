@@ -4,8 +4,9 @@
 through your drawing to the flag. Tap to jump.** An open-source game for the **M5Stack CoreS3**, designed to be built
 by a parent and a 7-year-old together. MIT licensed.
 
-> **Status:** design approved, browser simulator built. Firmware Step 0 done: the C++ level codec and physics pass the
-> simulator's golden tests on a PC, and a hardware-check app builds for the CoreS3 (not yet run on a device).
+> **Status:** design approved, browser simulator built, and the **whole game is written and runs in a PC emulator**
+> (finger mode and paper mode, every screen). It has **not run on a real CoreS3 yet**: see "Where we are" in
+> [docs/build-plan.md](docs/build-plan.md).
 
 ## Try it now (no hardware needed)
 
