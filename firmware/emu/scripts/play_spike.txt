@@ -1,0 +1,18 @@
+# Spikes: roll into the spike patch (pop), respawn at Start, then hop over it and win.   run: emu/run_script.sh emu/scripts/play_spike.txt
+# (the emulator clock is virtual, so the timing is exact: the second run reaches x = 120 at about 2160 ms)
+# start: play
+# slot: 4
+# levels: 4=hop
+# expect: [sfx pop]
+# expect: [sfx bloop]
+# expect: [sfx jump]
+# expect: [win slot 4]
+# expect-count: 1 [sfx pop]
+# expect-count: 1 [win slot 4]
+200 tilt 0.5
+1000 shot OUT/popped.ppm
+1100 shot OUT/popped2.ppm
+1750 shot OUT/respawn.ppm
+2140 key jump
+2480 shot OUT/midair.ppm
+5000 quit

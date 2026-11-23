@@ -1,0 +1,9 @@
+# Lesson 3 (the Bouncy pad, slot 2): roll right onto the blue pad and get launched.   run: emu/run_script.sh emu/scripts/play_bounce.txt
+# start: play
+# slot: 2
+# expect: [sfx bounce]
+200 tilt 0.5
+720 shot OUT/b1.ppm
+900 shot OUT/b2.ppm
+1300 shot OUT/b3.ppm
+4000 quit

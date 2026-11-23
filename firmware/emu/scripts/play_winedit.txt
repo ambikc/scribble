@@ -1,0 +1,7 @@
+# Win screen: the pencil goes to Draw (no jump on a button tap).   run: emu/run_script.sh emu/scripts/play_winedit.txt
+# start: win
+# slot: 0
+# expect-count: 1 [win button edit]
+# expect-count: 1 [win button
+500 tap 50 215
+1000 quit

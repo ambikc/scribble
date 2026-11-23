@@ -1,0 +1,17 @@
+# Jump input: a tap in the 12 px grip margin does NOT jump, a tap in the middle does, and so does the green pad.
+# run: emu/run_script.sh emu/scripts/play_jump.txt
+# start: play
+# slot: 0
+# expect-count: 2 [sfx jump]
+# expect-not: [play menu]
+# the ball stands on the left platform of the starter level and never moves (no tilt)
+300 tap 3 100
+700 tap 316 100
+1000 tap 11 60
+1300 tap 308 150
+# middle of the playfield: one jump (the ball needs ~0.7 s to land again)
+1600 tap 160 100
+1620 shot OUT/jumped.ppm
+3000 tap 200 215
+3040 shot OUT/pad.ppm
+4500 quit

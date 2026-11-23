@@ -1,0 +1,14 @@
+# The Win screen on its own: "Play again" starts a fresh Play (a tap in the middle then jumps the waiting ball).
+# run: emu/run_script.sh emu/scripts/play_winscreen.txt     (play_winedit.txt / play_winnew.txt: the other two buttons)
+# start: win
+# slot: 0
+# expect: [win button again]
+# expect-count: 1 [win button
+# expect-count: 1 [sfx jump]
+100 shot OUT/enter.ppm
+250 shot OUT/bounce.ppm
+1500 shot OUT/settled.ppm
+2000 tap 160 215
+2500 shot OUT/replay.ppm
+3000 tap 160 100
+3500 quit
