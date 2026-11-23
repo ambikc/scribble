@@ -31,18 +31,13 @@ void* bigAlloc(size_t n) {
   return std::malloc(n);
 }
 
-/** Save if there is anything to save; in the emulator also print a checksum of the saved pixels + pins (scripts compare it with
- *  what the portable core computes for the same strokes, see emu/scripts/draw_*.txt). */
+/** Save if there is anything to save; in the emulator also print levelDigest() of the saved level (scripts compare it with what
+ *  test/test_draw computes for the same strokes, see emu/run_draw_tests.sh). */
 void saveLevel(Game& g) {
   const bool was = g.dirtySave;
   g.saveCurrent();
 #ifdef EMU
-  if (was) {
-    static uint8_t cat[3 * LAYER_BYTES];
-    std::memcpy(cat, g.level.ground, LAYER_BYTES); std::memcpy(cat + LAYER_BYTES, g.level.spike, LAYER_BYTES); std::memcpy(cat + 2 * LAYER_BYTES, g.level.bouncy, LAYER_BYTES);
-    std::printf("[level crc %08X start %d,%d flag %d,%d]\n", unsigned(crc32(cat, 0, sizeof cat)), g.level.startX, g.level.startY, g.level.flagX, g.level.flagY);
-    std::fflush(stdout);
-  }
+  if (was) { std::printf("[level crc %08X]\n", unsigned(levelDigest(g.level))); std::fflush(stdout); }
 #else
   (void)was;
 #endif

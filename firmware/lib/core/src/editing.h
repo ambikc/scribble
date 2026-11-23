@@ -77,6 +77,19 @@ class UndoRing {
   LevelSnap* mem_ = nullptr; int cap_ = 0, head_ = 0, n_ = 0;
 };
 
+/** A CRC-32 over the three layers (one running sum, no big buffer) plus the pins' positions: the emulator prints it when Draw saves, the
+ *  PC tests compute the expected value from the same strokes (emu/run_draw_tests.sh compares them). */
+inline uint32_t levelDigest(const Level& l) {
+  uint32_t c = 0xffffffffu;
+  auto feed = [&c](const uint8_t* p, size_t n) {
+    for (size_t i = 0; i < n; i++) { c ^= p[i]; for (int k = 0; k < 8; k++) c = (c & 1) ? 0xedb88320u ^ (c >> 1) : c >> 1; }
+  };
+  feed(l.ground, LAYER_BYTES); feed(l.spike, LAYER_BYTES); feed(l.bouncy, LAYER_BYTES);
+  const int32_t pins[4] = {l.startX, l.startY, l.flagX, l.flagY};
+  for (int32_t v : pins) { const uint8_t b[4] = {uint8_t(v), uint8_t(v >> 8), uint8_t(v >> 16), uint8_t(v >> 24)}; feed(b, 4); }
+  return c ^ 0xffffffffu;
+}
+
 // ---- strokes ----------------------------------------------------------------------------------------------------------------
 inline double clampPx(double v, double hi) { return v < 0 ? 0 : v > hi ? hi : v; }
 
