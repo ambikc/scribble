@@ -98,7 +98,7 @@ export function eraseDisc(l: Level, cx: number, cy: number, r: number): void {
 /** Brush stroke from (x0,y0) to (x1,y1): discs at most STAMP_SPACING apart so fast strokes leave no gaps.
  *  `m` = null erases. Returns the bounding box touched (for dirty-rect rendering). */
 export function paintLine(l: Level, m: Material | null, x0: number, y0: number, x1: number, y1: number, r: number): void {
-  const dist = Math.hypot(x1 - x0, y1 - y0);
+  const dist = Math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)); // sqrt, not hypot: identical in C++
   const n = Math.max(1, Math.ceil(dist / C.STAMP_SPACING));
   for (let i = 0; i <= n; i++) {
     const t = i / n, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t;

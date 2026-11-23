@@ -46,8 +46,10 @@ export function respawn(w: World, level: Level): void {
 }
 
 // ---- sample points around the ball's edge -------------------------------------------------
-const COS: number[] = [], SIN: number[] = [];
-for (let i = 0; i < C.SAMPLE_COUNT; i++) { const a = (2 * Math.PI * i) / C.SAMPLE_COUNT; COS.push(Math.cos(a)); SIN.push(Math.sin(a)); }
+// The 16 sample directions as literals (cos, sin of 22.5 degree steps), identical in physics.cpp, so the
+// simulator and the firmware never differ because of a maths library.
+const COS = [1.0, 0.9238795325112867, 0.7071067811865476, 0.38268343236508984, 6.123233995736766e-17, -0.3826834323650897, -0.7071067811865475, -0.9238795325112867, -1.0, -0.9238795325112868, -0.7071067811865477, -0.38268343236509034, -1.8369701987210297e-16, 0.38268343236509, 0.7071067811865474, 0.9238795325112865];
+const SIN = [0.0, 0.3826834323650898, 0.7071067811865475, 0.9238795325112867, 1.0, 0.9238795325112867, 0.7071067811865476, 0.3826834323650899, 1.2246467991473532e-16, -0.38268343236508967, -0.7071067811865475, -0.9238795325112865, -1.0, -0.9238795325112866, -0.7071067811865477, -0.3826834323650904];
 
 /** 0 = free, 1 = ground, 2 = bouncy. Left/right of the world are solid walls; top is open; bottom is the pit. */
 function solidKind(level: Level, x: number, y: number): number {
@@ -69,8 +71,8 @@ function contact(level: Level, bx: number, by: number, r: number): Contact {
     if (k) { nx -= COS[i]; ny -= SIN[i]; hits++; if (k === 2) bouncy = true; }
   }
   if (hits) {
-    const len = Math.hypot(nx, ny);
-    if (len > 1e-3) { nx /= len; ny /= len; } else { nx = 0; ny = -1; } // pinched between two surfaces: push up
+    const l = Math.sqrt(nx * nx + ny * ny);
+    if (l > 1e-3) { nx /= l; ny /= l; } else { nx = 0; ny = -1; } // pinched between two surfaces: push up
   }
   scratch.nx = nx; scratch.ny = ny; scratch.hits = hits; scratch.bouncy = bouncy;
   return scratch;
@@ -95,6 +97,7 @@ function unstick(level: Level, b: Ball): boolean {
 }
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
+const len = (x: number, y: number) => Math.sqrt(x * x + y * y); // sqrt is exactly rounded in every language; hypot is not
 
 /** Advance one fixed tick (1/PHYSICS_HZ). Returns EV_* bits. */
 export function physicsStep(w: World, level: Level, input: StepInput): number {
@@ -127,7 +130,7 @@ export function physicsStep(w: World, level: Level, input: StepInput): number {
     }
   }
   b.vy += C.GRAVITY * dt * 0.5;                                  // leapfrog: half a gravity kick before the move ...
-  const sp = Math.hypot(b.vx, b.vy);
+  const sp = len(b.vx, b.vy);
   if (sp > C.MAX_SPEED) { b.vx *= C.MAX_SPEED / sp; b.vy *= C.MAX_SPEED / sp; }
 
   // ---- sub-steps: never move more than MAX_STEP px at once ----
@@ -172,7 +175,7 @@ export function physicsStep(w: World, level: Level, input: StepInput): number {
     // 3. non-solid checks
     if (spikeHit(level, b.x, b.y)) { w.state = ST_DYING; w.dyingKind = 0; w.stateTime = 0; b.grounded = false; return ev | EV_POP; }
     if (b.y > C.WORLD_H + C.PIT_MARGIN_R * C.BALL_RADIUS) { w.state = ST_DYING; w.dyingKind = 1; w.stateTime = 0; b.grounded = false; return ev | EV_FELL; }
-    if (Math.hypot(b.x - level.flagX, b.y - (level.flagY - C.FLAG_CENTER_DY)) < C.FLAG_HIT_RADIUS) {
+    if (len(b.x - level.flagX, b.y - (level.flagY - C.FLAG_CENTER_DY)) < C.FLAG_HIT_RADIUS) {
       w.state = ST_CELEBRATING; w.stateTime = 0; b.vx = 0; b.vy = 0; return ev | EV_WIN;
     }
   }

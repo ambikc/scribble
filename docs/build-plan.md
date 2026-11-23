@@ -46,10 +46,13 @@ These need no hardware.
 5. Port `level.h/.cpp` (bit helpers + encoder/decoder) first, with tests against `.scrb` files produced by the simulator.
 
 **Test checklist**
-- [ ] `pio run -e cores3` builds with no errors.
-- [ ] `pio test -e native` runs and passes the level-codec tests (valid file loads; wrong magic, wrong CRC, wrong size are rejected).
-- [ ] A `.scrb` written by the simulator decodes in C++ **byte-identically**, and vice versa.
-- [ ] CI is green on the branch.
+- [x] `pio run -e cores3` builds with no errors (RAM 15.9 %, flash 17.9 % with the hardware-check app).
+- [x] `pio test -e native` runs and passes the level-codec tests (valid file loads; wrong magic, wrong CRC, wrong size are rejected).
+- [x] A `.scrb` written by the simulator decodes in C++ **byte-identically**, and vice versa (lessons and a brush-stroke level; thumbnails included).
+- [x] Bonus: `physics.h/.cpp` is ported too and replays the simulator's golden vectors (worst difference 0.0000005 px).
+- [ ] CI is green on the branch (`.github/workflows/firmware.yml`).
+
+**Already built for Steps 1–3:** `firmware/src/main.cpp` is a hardware-check app (pages INFO, TOUCH, SPEED, TILT, BALL, SOUND) that runs the Step 1–3 measurements and prints them over serial. Flash it the day the device arrives: `cd firmware && pio run -e cores3 -t upload && pio device monitor`. It compiles but has **not run on a real CoreS3 yet**.
 
 ---
 

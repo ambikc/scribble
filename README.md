@@ -4,7 +4,8 @@
 through your drawing to the flag. Tap to jump.** An open-source game for the **M5Stack CoreS3**, designed to be built
 by a parent and a 7-year-old together. MIT licensed.
 
-> **Status:** design approved, browser simulator built, device firmware not started (the device is on its way).
+> **Status:** design approved, browser simulator built. Firmware Step 0 done: the C++ level codec and physics pass the
+> simulator's golden tests on a PC, and a hardware-check app builds for the CoreS3 (not yet run on a device).
 
 ## Try it now (no hardware needed)
 
@@ -28,14 +29,15 @@ More in [sim/README.md](sim/README.md).
 |------|------|
 | [`docs/`](docs/) | The design: [game design](docs/game-design.md), [screens](docs/screens.md), [system design](docs/system-design.md), [build plan](docs/build-plan.md) |
 | [`sim/`](sim/) | The browser simulator (TypeScript, Vite, canvas, 320 × 240 shown at 3×) |
+| [`firmware/`](firmware/) | PlatformIO project for the CoreS3: the portable C++ core, native tests, and the hardware-check app ([README](firmware/README.md)) |
 | [`shared/constants.json`](shared/constants.json) | One source of truth for physics, layout and vision numbers; `node tools/gen-config.mjs` writes `sim/src/config.ts` and `shared/generated/config.h` |
-| [`shared/levels/`](shared/levels/), [`shared/golden/`](shared/golden/) | Built-in `.scrb` levels and golden physics vectors the firmware tests will replay |
+| [`shared/levels/`](shared/levels/), [`shared/golden/`](shared/golden/) | Built-in `.scrb` levels and golden physics vectors the firmware tests replay (`shared/generated/golden.h`) |
 | [`tools/template/`](tools/template/) | Generates the printable A4 level template PDF |
 
 ## How the pieces fit
 
 The simulator uses the **same module structure, constants, level file format, physics and paper-vision code** as the
-planned C++ firmware (`level`, `physics`, `vision`, `input`, `camera`, `renderer`, `audio`, `level_store`, `ui`, `modes`),
+C++ firmware (`level`, `physics`, `vision`, `input`, `camera`, `renderer`, `audio`, `level_store`, `ui`, `modes`),
 so it ports line by line. See [docs/system-design.md](docs/system-design.md).
 
 ## Licence

@@ -1,0 +1,28 @@
+name: firmware
+on: [push, pull_request]
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: sim/package-lock.json }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('firmware/platformio.ini') }}
+      - run: pip install platformio
+      - name: golden data is reproducible from the simulator
+        working-directory: sim
+        run: |
+          npm ci
+          npm run golden
+          git diff --exit-code -- ../shared/levels ../shared/golden ../shared/generated
+      - name: native tests (C++ core against the simulator's golden data)
+        working-directory: firmware
+        run: pio test -e native
+      - name: build for the CoreS3
+        working-directory: firmware
+        run: pio run -e cores3

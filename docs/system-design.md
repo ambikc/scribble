@@ -9,7 +9,7 @@
 
 | Part | Fact | Consequence |
 |------|------|-------------|
-| MCU | ESP32-S3, dual core, 240 MHz, single-precision FPU | `float` physics is fine; use core 0 for camera/vision, core 1 for the game loop |
+| MCU | ESP32-S3, dual core, 240 MHz, single-precision FPU | Physics runs in `double` (software, ~16 contact probes per sub-step) so it matches the simulator bit for bit; the hardware-check app measures the cost (`BALL` page, µs per tick). Use core 0 for camera/vision, core 1 for the game loop |
 | Memory | 512 KB SRAM (about 250–300 KB usable by us), **8 MB PSRAM**, **16 MB flash** | Big buffers (sprites, camera frames, vision workspace) live in PSRAM; hot data (level layers) in SRAM |
 | Screen | 2.0″ IPS 320×240, ILI9342C over SPI, capacitive touch (single touch reliable) | A full-screen push is ~31 ms at 40 MHz SPI (**to be measured**), so Play repaints only changed rectangles |
 | Camera | GC0308, **0.3 MP** (a retailer listing says "30 megapixels"; that is a typo for 30W = 300,000 pixels), below the screen, **faces the same way as the screen**. Fixed focus, sharp from ≈ **30 cm to 5 m**; field of view ≈ **46° × 35°** (58° diagonal) (**to be confirmed on the device**) | VGA (640×480) stills, QVGA preview; nobody holding the paper can see the preview, so the device **stands up** and counts down aloud |
@@ -114,11 +114,12 @@ void vision_process(const uint16_t* vga565, const VisionParams&,
 void vision_rethreshold(VisionWork& work, const VisionParams&, Level& out, VisionReport& rep);
 
 // ---- physics.h : pure ------------------------------------------------------
-struct Ball  { float x, y, vx, vy, angle; bool grounded; float coyote, jumpBuf; };
-struct World { Ball ball; float time; uint8_t state; float stateTime; };
-struct StepInput { float tilt; bool jumpPressed; };
+// double, not float: JavaScript numbers are doubles, and the golden tests compare the two versions (see 9.2)
+struct Ball  { double x, y, vx, vy, angle; bool grounded; double coyote, jumpBuf; };
+struct World { Ball ball; double time; int state; double stateTime; int dyingKind; };
+struct StepInput { double tilt; bool jumpPressed; };
 enum : uint32_t { EV_JUMP=1, EV_LAND=2, EV_BOUNCE=4, EV_POP=8, EV_FELL=16, EV_RESPAWN=32, EV_WIN=64 };
-uint32_t physics_step(World&, const Level&, const StepInput&);   // returns event bits
+uint32_t physicsStep(World&, const Level&, const StepInput&);    // returns event bits (same name as physics.ts)
 
 // ---- level.h ----------------------------------------------------------------
 struct Level { uint8_t ground[7680], spike[7680], bouncy[7680];
@@ -737,16 +738,19 @@ scribble/
 │       ├── level_store.ts      localStorage + file download/upload         ↔ level_store
 │       ├── ui.ts                                                           ↔ ui
 │       └── modes.ts                                                        ↔ modes
-└── firmware/                   PlatformIO project (device phase)
-    ├── platformio.ini          board = m5stack-cores3
-    ├── src/ include/ test/     test/ = native unit tests incl. golden vectors
+└── firmware/                   PlatformIO project (see firmware/README.md)
+    ├── platformio.ini          env cores3 (the device) and env native (PC unit tests)
+    ├── partitions_16mb.csv     app 3 MB, OTA 3 MB, LittleFS ≈ 9.9 MB
+    ├── lib/core/src/           the portable core: level.h/.cpp, physics.h/.cpp (vision next)
+    ├── src/main.cpp            today: the day-one hardware-check app (build-plan Steps 1–3)
+    └── test/test_core/         native Unity tests against shared/generated/golden.h
 ```
 
 ### 9.2 Portability rules
 
 * **One constants file.** `shared/constants.json` generates `config.h` and `config.ts` (a ~30-line script), so a physics or vision value changes in exactly one place.
 * **Same names, same signatures.** `physics_step` ↔ `physicsStep`, same struct fields.
-* **Float discipline.** The device uses 32-bit `float`; the simulator uses `Math.fround` at assignment points in `physics.ts`. Results need not be bit-identical, but **golden tests allow ≤ 0.5 px drift over 600 ticks**.
+* **Float discipline.** Physics state is `double` in C++ (JavaScript's number type) and both versions round to 32-bit float at the same assignment points (`Math.fround` in TS, `f()` in C++). Both use the same literal sin/cos table and `sqrt(x*x+y*y)` instead of `hypot` (sqrt is exactly rounded everywhere; hypot and the trig functions are not). Fractional constants are emitted as `constexpr double`. The golden tests allow ≤ 0.5 px over 600 ticks; measured on a PC the worst difference is **0.0000005 px** (the 6-decimal rounding of the golden file).
 * **Vision is integer maths except the homography solve** (float/double, once per capture), whose result is rounded to 16.16 fixed point before the per-pixel work. C++ and TypeScript therefore agree on the four mark positions to ≤ 0.1 px and on **≥ 99.5 % of mask pixels**; the golden tests assert exactly that (and byte-identical results for stages 3–10 given the same straightened page).
 * **Bit order and endianness are fixed** (MSB first, little-endian) so `.scrb` files made in the browser load on the device and vice versa.
 * **Core code has no allocation, no globals, no I/O, no time or random calls.** All buffers are passed in.

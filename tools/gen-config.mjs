@@ -60,7 +60,8 @@ h.push('#include <cstdint>');
 h.push('namespace scribble {');
 for (const [k, v] of Object.entries(all)) {
   const isInt = Number.isInteger(v);
-  h.push(isInt ? `constexpr int32_t ${k} = ${v};` : `constexpr float ${k} = ${v}f;`);
+  // fractional constants are double: 0.9f is not the same number as JavaScript's 0.9, and the golden tests compare bit for bit
+  h.push(isInt ? `constexpr int32_t ${k} = ${v};` : `constexpr double ${k} = ${v};`);
 }
 for (const [k, v] of Object.entries(spec.palette)) {
   h.push(`constexpr uint16_t PAL_${k} = 0x${rgb565(v).toString(16).toUpperCase().padStart(4, '0')};`);
