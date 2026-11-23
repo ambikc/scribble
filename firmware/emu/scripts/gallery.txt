@@ -1,0 +1,61 @@
+# gallery.txt - visits every page of the gallery (emu_gallery) and screenshots it. Output: /tmp/gallery/pNN.ppm
+# run:    EMU_SCRIPT=emu/scripts/gallery.txt SDL_VIDEODRIVER=dummy .pio/build/emu_gallery/program
+# sheet:  python3 emu/make_sheet.py /tmp/gallery/p[0-9][0-9].ppm /tmp/gallery/sheet.png --cols 3
+# pages:  0 icons 22/30  1-2 icons 56  3 buttons (+ pressed/hold shots)  4-6 text  7-8 level  9 thumbnails  10 fx  11 menu  12 pictures
+300 shot /tmp/gallery/p00.ppm
+500 tap 310 8
+800 shot /tmp/gallery/p01.ppm
+1200 tap 310 8
+1500 shot /tmp/gallery/p02.ppm
+1900 tap 310 8
+2200 shot /tmp/gallery/p03.ppm
+2300 down 40 216
+2400 shot /tmp/gallery/p03b.ppm
+2420 up
+2500 down 120 24
+2700 shot /tmp/gallery/p03c.ppm
+2800 up
+2900 down 300 216
+3400 shot /tmp/gallery/p03d.ppm
+3500 up
+3600 down 140 176
+4000 shot /tmp/gallery/p03e.ppm
+4100 up
+4200 down 84 100
+4300 shot /tmp/gallery/p03f.ppm
+4400 up
+4500 log hit-test:expect-lp
+4510 tap 50 176
+4700 log hit-test:expect-lp_long-once
+4710 down 50 176
+5700 up
+5900 log hit-test:expect-jump-on-touch-down
+5910 down 250 176
+5920 up
+6100 log hit-test:expect-jump-forgiven-6px
+6110 tap 208 176
+6300 log hit-test:expect-nothing-7px
+6310 tap 207 176
+6500 log hit-test:expect-nothing-release-outside
+6510 down 50 176
+6520 move 200 100
+6530 up
+7600 tap 310 8
+7900 shot /tmp/gallery/p04.ppm
+8300 tap 310 8
+8600 shot /tmp/gallery/p05.ppm
+9000 tap 310 8
+9300 shot /tmp/gallery/p06.ppm
+9700 tap 310 8
+10000 shot /tmp/gallery/p07.ppm
+10400 tap 310 8
+10700 shot /tmp/gallery/p08.ppm
+11100 tap 310 8
+11400 shot /tmp/gallery/p09.ppm
+11800 tap 310 8
+12100 shot /tmp/gallery/p10.ppm
+12500 tap 310 8
+12800 shot /tmp/gallery/p11.ppm
+13200 tap 310 8
+13500 shot /tmp/gallery/p12.ppm
+13900 quit
