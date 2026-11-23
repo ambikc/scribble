@@ -203,7 +203,7 @@ These need no hardware.
 **Goal:** the full flow: **GO → "3, 2, 1, snap!" → Review → Play**, with the page found and straightened.
 
 **Tasks**
-1. Port `vision.cpp` from the simulator, including **mark finding, the homography and the warp**; run the **golden vision tests** on the PC (the marks within ≤ 0.1 px and ≥ 99.5 % of mask pixels identical; stages 3–10 byte-identical).
+1. Port `vision.cpp` from the simulator, including **mark finding, the homography and the warp**; run the **golden vision tests** on the PC (the marks within ≤ 0.1 px and ≥ 99.5 % of mask pixels identical; stages 3–10 byte-identical). **Done on the PC** (`firmware/lib/core/src/vision.*`, `pio test -e native -f test_vision`): the marks and every stage come out *identical*, not just within tolerance; what remains is timing it on the S3 and re-running the tests on real photos.
 2. The **Countdown screen** and sequence: lock exposure and white balance, play the four clips (placeholder tones if the clips aren't ready), take the frame at "snap" (average 3 VGA frames), then flash.
 3. The **Processing** animation while the vision task runs on core 0; the **Review** screen (straightened page, materials, pins, legend, Retake, thinner/thicker ink, Looks good).
 4. Quality statuses and the automatic single retry ([system-design §5.8](system-design.md#58-limits-and-fallbacks)); friendly pictures for each; the **marks-not-found** fallback (centre-crop) and the "paper not found" picture.
