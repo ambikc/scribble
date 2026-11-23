@@ -8,6 +8,7 @@
 #pragma once
 #include <cstdint>
 #include "config.h"
+#include "tilt.h"
 
 namespace scribble {
 
@@ -31,7 +32,10 @@ struct InputState {
 class Input {
  public:
   void begin();
-  /** Call once per 60 Hz tick (reads M5.Touch, M5.Imu, applies the tilt filter once). */
+  /** Read M5.Touch (and the emulator keys) and latch the edges. main() calls it once per loop pass, right after M5.update(), so a
+   *  tap is caught even on a pass that runs no tick. Idempotent: poll() calls it too, and edges are never doubled. */
+  void sample(uint32_t nowMs);
+  /** Call once per 60 Hz tick (reads M5.Imu, applies the tilt filter once, returns the state with the latched edges). */
   InputState poll(uint32_t nowMs);
   /** Call after a tick has used the edges. */
   void consumeEdges();
@@ -43,7 +47,10 @@ class Input {
   bool down_ = false, pressedEdge_ = false, releasedEdge_ = false;
   int x_ = 0, y_ = 0, sx_ = 0, sy_ = 0; uint32_t downAt_ = 0;
   float acc_[3] = {0, 0, 0};
+  TiltFilter tilt_;                // dead-zone + low-pass, stepped once per tick (lib/core/src/tilt.h)
   double smoothed_ = 0;
+  bool upright_ = true;
+  bool jumpEdge_ = false, backEdge_ = false, jumpHeld_ = false, backHeld_ = false;   // emulator keys
   int virtualDir_ = 0;
 };
 

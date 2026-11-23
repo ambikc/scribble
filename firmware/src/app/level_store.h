@@ -4,7 +4,14 @@
 //   <root>/slot0.scrb ... slot9.scrb     the .scrb bytes (docs/system-design.md section 4)
 //   <root>/settings.json                 {"sound":1,"lastSlot":0,"solvedMask":0,"firstRunDone":false,"standupSeen":false}
 // Saves are atomic: write slotN.tmp, fflush + fsync, rename over slotN.scrb (docs/system-design.md 4.4). A corrupt file shows
-// as an empty slot with a warning dot (`broken[i]`) and is never deleted by the loader. Slots live in PSRAM.
+// as an empty slot with a warning dot (`broken[i]`) and is never deleted: if the slot is later saved over or removed, the bytes
+// are first moved aside to slotN.bad. Slots live in PSRAM (ps_malloc) on the device, malloc elsewhere.
+//
+// Behaviour notes (see test/test_store):
+//   * first run (no slot files at all and !firstRunDone): the three lessons go into slots 0-2 and firstRunDone is set;
+//   * save() updates the in-memory slot even if the write fails (the old file stays on flash) and returns false then;
+//   * importBytes() with no free slot returns -1 and overwrites nothing;
+//   * settings.json is read/written by a tiny hand-written parser: unknown keys are ignored, a corrupt file means defaults.
 #pragma once
 #include <cstdint>
 #include "config.h"
@@ -19,6 +26,11 @@ void blankLevel(Level& out);
 
 class LevelStore {
  public:
+  LevelStore() = default;
+  ~LevelStore();
+  LevelStore(const LevelStore&) = delete;
+  LevelStore& operator=(const LevelStore&) = delete;
+
   Level* slots[SLOTS] = {};                       // nullptr = empty (allocated lazily, PSRAM)
   uint8_t* thumbs[SLOTS] = {};                    // THUMB_BYTES each, or nullptr
   bool broken[SLOTS] = {};
@@ -37,9 +49,12 @@ class LevelStore {
   /** Copy slot -> out (out must be non-null). Returns false if the slot is empty. */
   bool copyTo(int slot, Level& out) const;
  private:
-  char root_[96] = "";
-  bool writeAtomic(const char* path, const uint8_t* data, size_t n);
+  char root_[200] = "";
+  bool writeAtomic(const char* path, const uint8_t* data, size_t n);   // <path minus ext>.tmp + fflush + fsync + rename
   void loadSlot(int i);
+  Level* ensureSlot(int i);                       // allocate slots[i] + thumbs[i] if needed (nullptr if out of memory)
+  void clearSlot(int i);
+  void freeAll();
 };
 
 }  // namespace scribble

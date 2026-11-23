@@ -1,0 +1,21 @@
+# input / audio / storage checks for the game entry point (see emu/README.md)
+# (the screenshot path is relative: run from firmware/, or set EMU_SHOTS in a copy of this script)
+100 log start
+200 tap 50 100
+500 tap 150 100
+800 tap 150 100
+1100 tap 150 100
+1400 tap 250 100
+2000 down 20 30
+2100 move 60 60
+2200 up
+2400 tilt 0.5
+3000 tilt 0
+3200 tilt -0.2
+3600 tilt 0
+3800 upright 1
+4000 key jump
+4200 key back
+4400 upright 0
+4600 shot io.ppm
+4800 quit
