@@ -1,6 +1,6 @@
 # Hardware notes (fill in on the device)
 
-Numbers measured with the hardware-check app (`firmware/src/main.cpp`, see [firmware/README.md](../firmware/README.md)).
+Numbers measured with the hardware-check app (`firmware/hwcheck/main.cpp`, see [firmware/README.md](../firmware/README.md)).
 They decide a few design choices; each row links to the one it affects. Copy values from the serial monitor.
 
 | Measurement | Expected | Measured | Affects |

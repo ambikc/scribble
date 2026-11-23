@@ -52,7 +52,7 @@ These need no hardware.
 - [x] Bonus: `physics.h/.cpp` is ported too and replays the simulator's golden vectors (worst difference 0.0000005 px).
 - [ ] CI is green on the branch (`.github/workflows/firmware.yml`).
 
-**Already built for Steps 1–3:** `firmware/src/main.cpp` is a hardware-check app (pages INFO, TOUCH, SPEED, TILT, BALL, SOUND) that runs the Step 1–3 measurements and prints them over serial. Flash it the day the device arrives: `cd firmware && pio run -e cores3 -t upload && pio device monitor`. It compiles but has **not run on a real CoreS3 yet**.
+**Already built for Steps 1–3:** `firmware/hwcheck/main.cpp` is a hardware-check app (pages INFO, TOUCH, SPEED, TILT, BALL, SOUND) that runs the Step 1–3 measurements and prints them over serial. Flash it the day the device arrives: `cd firmware && pio run -e cores3 -t upload && pio device monitor`. It compiles but has **not run on a real CoreS3 yet**.
 
 ---
 

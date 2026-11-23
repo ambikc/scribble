@@ -30,6 +30,6 @@ jobs:
         working-directory: firmware
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q libsdl2-dev
-          pio run -e emu
-          EMU_SCRIPT=emu/scripts/smoke.txt SDL_VIDEODRIVER=dummy timeout 120 .pio/build/emu/program | tee /tmp/emu.log
+          pio run -e emu_hwcheck
+          EMU_SCRIPT=emu/scripts/smoke.txt SDL_VIDEODRIVER=dummy timeout 120 .pio/build/emu_hwcheck/program | tee /tmp/emu.log
           grep -q "page SOUND" /tmp/emu.log
