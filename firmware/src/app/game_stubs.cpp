@@ -6,5 +6,5 @@ namespace scribble {
   __attribute__((weak)) void Game::tick##T(const InputState&) {} \
   __attribute__((weak)) void Game::draw##D() { r.clearPaper(); r.text(#T " (not built yet)", 160, 120, 18); }
 STUB(Title, Title) STUB(Picker, Picker) STUB(Chooser, Chooser) STUB(Standup, Standup) STUB(Check, Check) STUB(Countdown, Countdown)
-STUB(Processing, Processing) STUB(Review, Review) STUB(Draw, Draw) STUB(Play, Play) STUB(Win, Win) STUB(Menu, Menu)
+STUB(Processing, Processing) STUB(Review, Review) STUB(Draw, Draw) STUB(Menu, Menu)
 }  // namespace scribble
