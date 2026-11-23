@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "test": "npm run gen && vitest run",
     "typecheck": "tsc --noEmit",
-    "golden": "npm run gen && tsx scripts/make-golden.ts"
+    "golden": "npm run gen && tsx scripts/make-golden.ts && tsx scripts/make-vision-golden.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
