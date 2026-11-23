@@ -1,0 +1,3 @@
+# Chooser, Paper button with standupSeen = true -> the camera check directly. Start: EMU_START=chooser.
+100 tap 84 140
+500 quit

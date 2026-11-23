@@ -1,0 +1,3 @@
+# Menu from Play: the back chip -> Play
+100 tap 24 24
+400 quit

@@ -1,0 +1,6 @@
+# Menu from Play (EMU_START=menu, fresh EMU_FS, slot 0): the overlay; the sound cell cycles. Cells: resume(64,96) edit(160,96) levels(256,96) restart(64,176) sound(160,176) home(256,176).
+200 shot /tmp/scribble_menus/menu_play.ppm
+400 tap 160 176
+600 tap 160 176
+800 shot /tmp/scribble_menus/menu_play_sound.ppm
+900 quit

@@ -1,0 +1,3 @@
+# Menu from Draw: Home -> Title
+100 tap 160 176
+400 quit

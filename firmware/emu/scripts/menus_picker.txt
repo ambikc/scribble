@@ -1,0 +1,33 @@
+# Picker on the MIX fixture (slots 0-3 and 8 filled, 5 broken, 1 and 8 solved, last played 2). Start: EMU_START=picker.
+# slot centres: x = 32 + 64*(i%5), y = 96 + 96*(i/5).  bin chip (296,24), back chip (24,24).
+100 log picker
+400 shot /tmp/scribble_menus/picker.ppm
+600 tap 296 24
+800 log delete-mode-on
+900 shot /tmp/scribble_menus/picker_delete.ppm
+# a short tap on a filled slot in delete mode deletes nothing
+1100 tap 32 96
+1300 log short-tap-done
+# a hold that is released after 1 s deletes nothing (needs 1.5 s)
+1500 down 160 96
+1700 shot /tmp/scribble_menus/picker_hold.ppm
+2500 up
+2700 log early-release-done
+# holding slot 4 (index 3, x=224) for the full 1.5 s deletes it
+3000 down 224 96
+3800 shot /tmp/scribble_menus/picker_hold2.ppm
+4700 shot /tmp/scribble_menus/picker_deleted.ppm
+4800 up
+5000 log hold-delete-done
+# bin off; tap the now empty slot 4 -> chooser; finger -> a new level in THAT slot (index 3)
+5200 tap 296 24
+5400 tap 224 96
+5700 shot /tmp/scribble_menus/chooser.ppm
+5800 tap 236 140
+6200 key back
+6400 tap 96 192
+6700 tap 236 140
+7000 key back
+# select: slot 1 opens in Play
+7300 tap 96 96
+7700 quit

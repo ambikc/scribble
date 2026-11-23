@@ -1,0 +1,3 @@
+# Chooser, Finger button, fresh EMU_FS.
+100 tap 236 140
+500 quit

@@ -1,0 +1,9 @@
+# Menu from Draw (EMU_MENU_FROM=draw, EMU_START=menu): resume(64,96) clear(160,96) levels(256,96) sound(64,176) home(160,176). A short tap on Clear does nothing; a hold of 0.8 s clears and returns to Draw.
+200 shot /tmp/scribble_menus/menu_draw.ppm
+300 tap 160 96
+500 log short-tap-on-clear-done
+700 down 160 96
+1000 shot /tmp/scribble_menus/menu_draw_hold.ppm
+1700 up
+1900 key back
+2200 quit
