@@ -312,7 +312,7 @@ export function warp(vga: Uint16Array, hq: number[], out: Uint16Array = new Uint
     let sr = 0, sg = 0, sb = 0;
     for (let oy4 = 1; oy4 <= 3; oy4 += 2) for (let ox4 = 1; ox4 <= 3; ox4 += 2) {
       const X4 = 4 * x + ox4, Y4 = 4 * y + oy4;
-      let dq = Math.floor((h6 * X4 + h7 * Y4 + 4294967296) / 65536); if (dq < 4096) dq = 4096;    // d in 16.16, kept away from 0
+      let dq = Math.floor((h6 * X4 + h7 * Y4 + 4294967296) / 65536); dq = dq < 4096 ? 4096 : dq > 2147483647 ? 2147483647 : dq;   // d in 16.16, kept in 1/16 .. 32768
       const inv = fdiv(2147483647, dq);
       const nu = clamp(h0 * X4 + h1 * Y4 + 4 * h2, -NUMAX, NUMAX), nv = clamp(h3 * X4 + h4 * Y4 + 4 * h5, -NUMAX, NUMAX);
       const u8 = clamp(fdiv(nu * inv, 33554432) - 128, 0, UMAX8), v8 = clamp(fdiv(nv * inv, 33554432) - 128, 0, VMAX8);   // 1/256 px
