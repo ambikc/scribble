@@ -1,0 +1,15 @@
+# EMU_ASYNC_VISION=1: the vision jobs run on a thread with a 300 ms sleep at every yield point (about 6 s for a photo).
+# The Processing screen must keep animating meanwhile; the result must still be the golden one. EMU_START=check, the clean photo.
+100 upright 1
+2400 tap 250 216
+6300 shot @OUT@/async_processing_a.ppm
+6800 shot @OUT@/async_processing_b.ppm
+7300 shot @OUT@/async_processing_c.ppm
+7400 log still-processing
+16000 shot @OUT@/async_review.ppm
+# thinner ink: the re-threshold runs on the thread too (about 2 s); the "..." shows meanwhile
+16100 tap 96 216
+16400 shot @OUT@/async_rethreshold_busy.ppm
+16500 log rethreshold-started
+20000 shot @OUT@/async_review_less.ppm
+20100 quit

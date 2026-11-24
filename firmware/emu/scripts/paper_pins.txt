@@ -1,0 +1,22 @@
+# Pins the child moved survive the thinner / thicker ink buttons (a re-threshold rebuilds the level from the kept ink array).
+# Run by emu/paper_test.sh with EMU_START=check and the clean photo; the pins start at about (22, 103) and (297, 112).
+100 upright 1
+2400 tap 250 216
+7600 shot @OUT@/pins_review.ppm
+# drag the Start pin to (70, 90) and the Flag pin (grabbed at its centre, 12 px above its base) to (250, 60)
+7700 down 22 103
+7750 move 50 95
+7800 move 70 90
+7850 up
+8000 down 297 100
+8050 move 270 80
+8100 move 250 60
+8150 up
+8300 shot @OUT@/pins_moved.ppm
+# thinner ink, then thicker twice: three re-thresholds
+8400 tap 96 216
+8800 tap 160 216
+9200 tap 160 216
+9600 shot @OUT@/pins_after_ink.ppm
+9800 tap 256 216
+10200 quit

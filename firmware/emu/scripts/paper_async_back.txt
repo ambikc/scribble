@@ -1,0 +1,16 @@
+# EMU_ASYNC_VISION=1: leave with the Esc key while the photo is being processed, come straight back and take the photo again.
+# The abandoned job finishes on its thread and its result is dropped (never reviewed); the second photo gives the golden level.
+# EMU_START=check, the clean photo.
+100 upright 1
+2400 tap 250 216
+6500 key back
+6700 log left-during-processing
+7000 shot @OUT@/async_back_left.ppm
+# the title's camera button, then Ready on the stand-up guide: back in the check while the old job still runs
+7200 tap 112 216
+7600 tap 160 216
+8000 shot @OUT@/async_back_check.ppm
+14000 log go-again
+14100 tap 250 216
+26000 shot @OUT@/async_back_review.ppm
+26100 quit

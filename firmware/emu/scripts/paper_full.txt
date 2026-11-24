@@ -1,0 +1,9 @@
+# Looks good with all 10 slots full (paper_test.sh fills them before the run): nothing is saved, the level stays in the review.
+# EMU_START=check, the clean photo.
+100 upright 1
+2400 tap 250 216
+7600 shot @OUT@/full_review.ppm
+7700 tap 256 216
+7900 shot @OUT@/full_refused.ppm
+8000 log after-looks-good
+8500 quit

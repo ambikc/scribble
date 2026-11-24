@@ -1,0 +1,7 @@
+# The snap stalls (EMU_GRAB_MS=8000: the three-frame grab is still busy long after "snap!"): SNAP_AT_S + 3.5 s after GO the
+# countdown gives up, says "The camera missed the picture" and goes back to the check. EMU_START=check, the clean photo.
+100 upright 1
+2400 tap 250 216
+9500 shot @OUT@/stall_missed.ppm
+9600 log after-the-stall
+10000 quit

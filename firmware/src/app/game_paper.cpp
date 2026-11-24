@@ -6,7 +6,11 @@
 //   * camera task (camera.cpp, core 0)  grabs frames, publishes the newest one, averages three of them at the snap
 //   * vision task (here, core 0)        runs visionLiveCheck (~8 Hz in Check), visionProcess (Processing) and visionRethreshold (Review)
 //   The screens start a job, keep animating, and poll for its end. The emulator runs the jobs inline (one script tick = one loop pass, so
-//   a run stays deterministic); the code paths and state machine are the same.
+//   a run stays deterministic); the code paths and state machine are the same. EMU_ASYNC_VISION=1 runs them on a std::thread instead,
+//   with a 300 ms sleep at every yield point of the pipeline, so the emulator shows what the device's concurrency does.
+//   Watchdog: the device sdkconfig watches IDLE0 (5 s, panic). visionProcess on a carpet photo can take seconds, so the pipeline calls
+//   a yield hook (VisionParams::yieldFn) between stages and every 64 rows: here a vTaskDelay(1), which lets IDLE0 run. The camera
+//   task (priority 2, core 0) is switched off as soon as the snap is taken, so it does not compete with Processing / Review.
 #include "game.h"
 #include "camera.h"
 #include <atomic>
@@ -17,6 +21,7 @@
 
 #ifdef EMU
 #include <chrono>
+#include <thread>
 #else
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
@@ -34,6 +39,7 @@ constexpr float PI_F = 3.14159265f;
 constexpr float MIN_PROCESSING_S = 0.6f;                  // the sparkle is always seen for a moment, even when the vision code is quick
 constexpr float STANDUP_GATE_S = 8.0f;                    // "stand me up" waits this long for the IMU, then Ready works anyway (never a dead end)
 constexpr int LIVE_CHECK_MS = 125;                        // the live check runs about 8 times a second
+constexpr float SNAP_STALL_S = 3.5f;                      // the three-frame grab still busy this long after "snap!": give up (a frame can block 4 s)
 
 uint64_t nowUs() {
 #ifdef EMU
@@ -51,7 +57,8 @@ void* bigAlloc(size_t n) {
 #endif
 }
 
-/** The three big buffers (770 KB + 614 KB + 77 KB), once. PSRAM on the device. */
+/** The big buffers (770 KB + 614 KB + 77 KB + two 23 KB Levels), once; never freed (docs/system-design.md 8.2). PSRAM on the device.
+ *  A failed allocation is retried on the next entry to the camera check (tickCheck clears allocFailed). */
 bool ensureBuffers(PaperState& s) {
   if (s.work && s.snap && s.gray && s.res && s.tmp) return true;
   if (s.allocFailed) return false;
@@ -83,21 +90,33 @@ struct Worker {
   // inputs (set before start)
   const uint8_t* gray = nullptr; bool upright = true;
   const uint16_t* vga = nullptr;
-  VisionParams params{}; VisionWork* work = nullptr; Level* level = nullptr; VisionReport* report = nullptr;
-  // outputs
-  LiveCheck live{}; VisionParams used{}; uint32_t ms = 0;
+  VisionParams params{}; VisionWork* work = nullptr; Level* level = nullptr;
+  // outputs: the job's own copies, handed to the screens in take() (nobody reads them while the job runs)
+  LiveCheck live{}; VisionParams used{}; VisionReport report{}; uint32_t ms = 0;
 #ifndef EMU
   TaskHandle_t task = nullptr;
+  static void yieldHook(void*) { vTaskDelay(1); }           // one tick: IDLE0 runs and feeds the task watchdog
+#else
+  int async = -1;                                         // EMU_ASYNC_VISION=1: jobs on a thread (read once)
+  bool isAsync() { if (async < 0) { const char* e = std::getenv("EMU_ASYNC_VISION"); async = (e && *e == '1') ? 1 : 0; } return async == 1; }
+  static void yieldHook(void*) { std::this_thread::sleep_for(std::chrono::milliseconds(300)); }   // a slow device, exaggerated
 #endif
 
   void run() {
     const uint64_t t0 = nowUs();
+    VisionParams p = params;
+#ifdef EMU
+    if (isAsync()) { p.yieldFn = yieldHook; p.yieldUser = nullptr; }
+#else
+    p.yieldFn = yieldHook; p.yieldUser = nullptr;
+#endif
     switch (job) {
       case Job::Live: visionLiveCheck(gray, upright, *work, live); break;
-      case Job::Process: used = params; visionProcess(vga, params, *work, *level, *report, &used); break;
-      case Job::Rethreshold: visionRethreshold(*work, params, *level, *report); break;
+      case Job::Process: visionProcess(vga, p, *work, *level, report, &used); break;
+      case Job::Rethreshold: visionRethreshold(*work, p, *level, report); break;
       case Job::None: break;
     }
+    used.yieldFn = nullptr; used.yieldUser = nullptr;
     ms = uint32_t((nowUs() - t0 + 500) / 1000);
     state.store(2, std::memory_order_release);
   }
@@ -109,10 +128,13 @@ struct Worker {
 #endif
   /** True if a new job may be started (a finished result nobody wanted any more is dropped). */
   bool available() { if (state.load() == 2) state.store(0); return state.load() == 0; }
+  /** True while a job of kind `j` is running (its buffers must not change under it). */
+  bool running(Job j) const { return state.load(std::memory_order_acquire) == 1 && job == j; }
   void start(Job j) {
     job = j; state.store(1, std::memory_order_release);
 #ifdef EMU
-    run();
+    if (isAsync()) std::thread([this] { run(); }).detach();   // the process may quit while it runs: nothing to join
+    else run();
 #else
     if (!task) xTaskCreatePinnedToCore(trampoline, "vision", 16384, this, 1, &task, 0);   // created on first use; priority 1 on core 0, the game loop is on core 1
     if (!task) { state.store(0); return; }
@@ -126,6 +148,14 @@ struct Worker {
   }
 };
 Worker W;
+
+/** Emulator, async mode only: while a job runs, let each script tick take about a real frame, so the virtual clock of a script does not
+ *  race ahead of the (sleeping) vision thread. A no-op on the device and in the default inline mode. */
+void paceWhileBusy() {
+#ifdef EMU
+  if (W.isAsync() && W.state.load() == 1) std::this_thread::sleep_for(std::chrono::milliseconds(16));
+#endif
+}
 
 #ifdef EMU
 uint32_t crcOfLevel(const Level& l) {
@@ -219,6 +249,8 @@ void Game::drawStandup() {
 // 4.2 camera check
 // =====================================================================================================================
 void Game::tickCheck(const InputState& in) {
+  paceWhileBusy();
+  if (screenT < 0.02f) paper.allocFailed = false;                     // one failed allocation must not disable paper mode until a reboot
   if (!cam || !ensureBuffers(paper)) { say(cam ? "Not enough memory for the camera" : "No camera in this build"); leaveCamera(); return; }
   if (screenT < 0.02f) { paper.lcValid = false; paper.greenFor = 0; paper.lcFrame = 0; paper.lcAt = 0; paper.debugNums = false; }
   cam->begin();                                                       // the lease: every tick of a paper screen renews it
@@ -337,6 +369,7 @@ void Game::drawCheck() {
 // 4.3 countdown and snap
 // =====================================================================================================================
 void Game::tickCountdown(const InputState& in) {
+  paceWhileBusy();
   if (!cam || !ensureBuffers(paper)) { go(Screen::Check); return; }
   cam->begin();
   chipBack(nullptr, Icon::Stop);
@@ -353,7 +386,8 @@ void Game::tickCountdown(const InputState& in) {
   }
   if (paper.cdT >= float(SNAP_AT_S)) {
     if (!paper.snapAsked) {                                           // the camera averages three frames in its own task
-      if (cam->grabStart(paper.snap)) paper.snapAsked = true;
+      if (W.running(Job::Process)) {}                                 // an abandoned Processing job still reads `snap`: wait for it (the 2 s limit below applies)
+      else if (cam->grabStart(paper.snap)) paper.snapAsked = true;
       else if (!cam->running() || paper.cdT > float(SNAP_AT_S) + 2.0f) { cam->lockExposure(false); say("The camera missed the picture"); go(Screen::Check); return; }
     } else if (!paper.snapped) {
       const Camera::Grab g = cam->grabState();
@@ -361,9 +395,14 @@ void Game::tickCountdown(const InputState& in) {
         cam->grabAck(); paper.snapped = true; paper.haveSnap = true;
         audio.play(Sfx::Shutter); flash(PAL_WHITE, 0.08f);
         cam->lockExposure(false);
-        go(Screen::Processing);
+        cam->end();                                                   // off now: its task (priority 2, core 0) would keep converting frames
+        go(Screen::Processing);                                       // beside the vision job; Retake's Check starts it again
       } else if (g == Camera::Grab::Failed || g == Camera::Grab::Idle) {
         cam->grabAck(); cam->lockExposure(false); say("The camera missed the picture"); go(Screen::Check);
+      } else if (paper.cdT > float(SNAP_AT_S) + SNAP_STALL_S || cam->failed()) {   // still Busy: a stalled sensor must not freeze "!"
+        cam->lockExposure(false); say("The camera missed the picture");
+        Serial.printf("[paper snap stalled: no picture %.1f s after snap]\n", double(SNAP_STALL_S));
+        go(Screen::Check);
       }
     }
   }
@@ -392,21 +431,29 @@ void Game::drawCountdown() {
 // processing
 // =====================================================================================================================
 void Game::tickProcessing(const InputState& in) {
+  paceWhileBusy();
   ui.update(in);
   if (screenT < 0.02f) { paper.procStarted = paper.procDone = false; paper.procT = 0; paper.haveResult = false; paper.busy = false; }
+  if (in.keyBack) { go(Screen::Check); return; }                      // emulator Esc (the core then steps on out of the Check): the job
+                                                                      // finishes on its own and the next available() drops its result
   if (!paper.haveSnap || !paper.work || !paper.snap) { go(Screen::Check); return; }
   paper.procT += DT;
   if (!paper.procStarted && W.available()) {
     paper.params = defaultParams();
-    W.vga = paper.snap; W.params = paper.params; W.work = paper.work; W.level = paper.res; W.report = &paper.report;
+    W.vga = paper.snap; W.params = paper.params; W.work = paper.work; W.level = paper.tmp;
     paper.procStarted = true;
     W.start(Job::Process);
   }
   if (paper.procStarted && !paper.procDone && W.take(Job::Process)) {
+    *paper.res = *paper.tmp; paper.report = W.report;
     paper.procDone = true; paper.haveResult = true; paper.params = W.used; paper.reveal = 0; paper.pinDrag = 0;
+    paper.startMoved = paper.flagMoved = false;
     const VisionReport& rep = paper.report;
-    Serial.printf("[paper vision %u ms (this computer, not the device): status %d marks %s ink %.4f blobs %d]\n", unsigned(W.ms), rep.status, rep.marksFound ? "found" : "missing", rep.inkCover, rep.blobs);
+    // on the device the time is real (esp_timer around visionProcess); passes > 1 = the silent automatic retry (5.8), hence the longer time
+    Serial.printf("[paper vision %u ms, %d pass%s%s: status %d marks %s ink %.4f blobs %d ink threshold %d]\n", unsigned(W.ms), rep.passes, rep.passes == 1 ? "" : "es",
+                  rep.passes == 1 ? "" : " (silent retry)", rep.status, rep.marksFound ? "found" : "missing", rep.inkCover, rep.blobs, paper.params.inkThresh);
 #ifdef EMU
+    Serial.printf("[paper vision emu: the time above is this computer's%s, not the device's]\n", W.isAsync() ? " plus injected 300 ms sleeps (EMU_ASYNC_VISION)" : "");
     Serial.printf("[paper level crc %08X]\n", unsigned(crcOfLevel(*paper.res)));
 #endif
   }
@@ -434,6 +481,7 @@ void Game::drawProcessing() {
 // 5 review
 // =====================================================================================================================
 void Game::tickReview(const InputState& in) {
+  paceWhileBusy();
   if (!paper.haveResult || !paper.work) { go(Screen::Check); return; }
   if (screenT < 0.02f) { paper.pinDrag = 0; paper.busy = false; }
   paper.reveal += DT;
@@ -450,8 +498,11 @@ void Game::tickReview(const InputState& in) {
   bar(items, widths, 4);
   const char* hit = ui.update(in);
 
-  if (W.take(Job::Rethreshold)) {                                      // the new level is swapped in whole
-    *paper.res = *paper.tmp; paper.busy = false; paper.reveal = 1;
+  if (W.take(Job::Rethreshold)) {                                      // the new level is swapped in whole...
+    *paper.res = *paper.tmp; paper.report = W.report; paper.busy = false; paper.reveal = 1;
+    Level& lv = *paper.res;                                            // ...but the pins the child moved stay where they were put
+    if (paper.startMoved) { lv.startX = paper.startX; lv.startY = paper.startY; clearAround(lv, lv.startX, lv.startY, START_SAFE_RADIUS); }
+    if (paper.flagMoved) { lv.flagX = paper.flagX; lv.flagY = paper.flagY; clearAround(lv, lv.flagX, lv.flagY - FLAG_CENTER_DY, FLAG_SAFE_RADIUS); }
     audio.play(Sfx::Tick);
 #ifdef EMU
     Serial.printf("[paper rethreshold %u ms: status %d ink %.4f ink threshold %d]\n[paper level crc %08X]\n", unsigned(W.ms), paper.report.status, paper.report.inkCover, paper.params.inkThresh, unsigned(crcOfLevel(*paper.res)));
@@ -471,7 +522,8 @@ void Game::tickReview(const InputState& in) {
       if (paper.pinDrag == 1) { lv.startX = x; lv.startY = y; } else { lv.flagX = x; lv.flagY = y + FLAG_CENTER_DY; }
     }
     if (paper.pinDrag && t.released) {                                 // drop: never bury a pin in ground
-      if (paper.pinDrag == 1) clearAround(lv, lv.startX, lv.startY, START_SAFE_RADIUS); else clearAround(lv, lv.flagX, lv.flagY - FLAG_CENTER_DY, FLAG_SAFE_RADIUS);
+      if (paper.pinDrag == 1) { clearAround(lv, lv.startX, lv.startY, START_SAFE_RADIUS); paper.startMoved = true; paper.startX = lv.startX; paper.startY = lv.startY; }
+      else { clearAround(lv, lv.flagX, lv.flagY - FLAG_CENTER_DY, FLAG_SAFE_RADIUS); paper.flagMoved = true; paper.flagX = lv.flagX; paper.flagY = lv.flagY; }
       paper.pinDrag = 0; audio.play(Sfx::Tick);
     }
   }
@@ -482,16 +534,20 @@ void Game::tickReview(const InputState& in) {
     const int step = !std::strcmp(hit, "less") ? INK_STEP : -INK_STEP;   // less ink = a higher threshold
     int th = paper.params.inkThresh + step; th = th < 38 ? 38 : th > 128 ? 128 : th;
     paper.params.inkThresh = th;
-    *paper.tmp = *paper.res;
-    W.params = paper.params; W.work = paper.work; W.level = paper.tmp; W.report = &paper.report;
+    W.params = paper.params; W.work = paper.work; W.level = paper.tmp;   // the job writes tmp and its own report; take() copies them
     paper.busy = true; paper.pinDrag = 0;
     W.start(Job::Rethreshold);
   } else if (!std::strcmp(hit, "good") && !paper.busy) {
-    // save into the first empty slot (the last-opened slot if all ten are full), name it, and play it
+    // save into the empty slot the Picker chose, else the first empty one, name it, and play it. Never over a level: if every slot
+    // is full (the Chooser and Title refuse that early, but something may have filled the last one meanwhile) the level stays here
     int target = menus.pendingSlot;                                    // the empty slot the Picker chose (modes.ts), else the first empty one
     if (target < 0 || target >= SLOTS || store.slots[target]) target = store.firstEmpty();
+    if (target < 0) {
+      say("All 10 slots are full: delete one first");
+      Serial.println("[paper accept refused: all slots are full]");
+      return;
+    }
     menus.pendingSlot = -1;
-    if (target < 0) { target = store.settings.lastSlot; if (target < 0 || target >= SLOTS) target = 0; char m[40]; snprintf(m, sizeof m, "All slots full: replaced %d", target + 1); say(m); }
     *paper.tmp = *paper.res;                                           // (not on the stack: a Level is 23 KB and the loop task has 8 KB)
     Level& lv = *paper.tmp;
     snprintf(lv.name, sizeof lv.name, "Paper %d", target + 1);
