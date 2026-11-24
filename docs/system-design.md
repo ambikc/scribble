@@ -451,15 +451,17 @@ Everything per pixel is integer maths on small arrays (no OpenCV): the mark thre
 | 8–10 Quality, pins, pack, thumbnail | 15 ms | |
 | **Total** | **≈ 0.4 – 0.65 s** | Budget **≤ 0.8 s**; a sparkle animation covers it. The countdown itself adds 3.3 s *before* this |
 
-**Memory** (transient, in PSRAM, freed on leaving Camera/Review):
+These are estimates; the real number is printed on every capture (`[paper vision N ms, P pass ...]`, measured with `esp_timer` on the device; `P` > 1 means the silent retry of §5.8 ran, so up to about twice the time). A slow photo (a carpet, a busy page) may take **several seconds**, so the job must never starve core 0: the vision task (core 0, priority 1) passes a **yield hook** to the pipeline (`VisionParams::yieldFn`, a `vTaskDelay(1)`), which the core calls between stages, every 64 rows of the per-pixel loops and once per colour class in the clean-up (20–30 calls per photo), so the idle task keeps feeding the 5 s task watchdog. The hook never changes a result (a native test runs with and without it). The camera task (core 0, priority 2) is switched off as soon as the snap is taken, so it does not compete with Processing or Review. If the grab itself stalls, the countdown gives up 3.5 s after "snap" ("The camera missed the picture"). The emulator can run the jobs on a thread with 300 ms sleeps in that hook (`EMU_ASYNC_VISION=1`) to show the same concurrency.
+
+**Memory** of the vision itself (in PSRAM; the paper-mode total, with the camera's own buffers, is in §8.2):
 
 | Buffer | Bytes |
 |--------|------:|
-| Camera frame buffers: 2 × VGA RGB565 (640×480×2) | 1,228,800 |
 | `VisionWork`, kept for Review: straightened photo (RGB565 320×192) 122,880 + `ink` 61,440 + `colour class` 61,440 + `labels` 61,440 + marks | 307,292 |
 | `VisionWork`, scratch shared by every stage (a union): marks 463,044 (QVGA gray 76,800 + mask 76,800 + integral image / flood stack 309,444); paper estimate 122,880; clean-up 307,200 (3 masks + flood stack) | 463,044 |
 | Paper grid, homography, tables (stack) | < 5,000 |
-| **Vision + camera total** | **≈ 2.0 MB** (see §8); `sizeof(VisionWork)` = 770,336, measured by the native test |
+| The snap (one averaged VGA RGB565 frame), the preview gray (QVGA), two `Level`s (the result and its scratch) | 614,400 + 76,800 + 46,208 |
+| **Vision total** | **≈ 1.5 MB**, allocated at the first Camera check and **never freed** (§8.2); `sizeof(VisionWork)` = 770,336, measured by the native test |
 
 ### 5.7 The live Camera check (the calibration screen)
 
@@ -683,16 +685,21 @@ Rest on a flat floor stays still; roll at 150 px/s for 1 s over flat ground → 
 
 ### 8.2 PSRAM (8 MB)
 
-| Item | Bytes |
-|------|------:|
-| Camera frame buffers 2 × VGA RGB565 (640×480×2) | 1,228,800 |
-| Vision workspace `VisionWork` (§5.6) | 770,336 |
-| `scene` sprite | 153,600 |
-| `fb[0]`, `fb[1]` sprites | 307,200 |
-| Undo ring: 8 snapshots × 23,104 | 184,832 |
-| **Total** | **≈ 2,644,768 (≈ 2.52 MiB, ~32 %)** |
+| Item | Bytes | Lifetime |
+|------|------:|----------|
+| Camera driver frame buffers 2 × VGA RGB565 (640×480×2) | 1,228,800 | while the camera is on (freed by `esp_camera_deinit`) |
+| Camera live double buffer 2 × VGA RGB565 + 2 × QVGA gray (`camera.cpp`) | 1,382,400 | while the camera is on |
+| Vision workspace `VisionWork` (§5.6) | 770,336 | from the first Camera check: **never freed** |
+| The snap (one VGA RGB565 frame) | 614,400 | never freed |
+| Preview gray for the live check (QVGA) | 76,800 | never freed |
+| Two `Level`s (the result and its scratch) | 46,208 | never freed |
+| **Paper mode** | **4,118,944 (≈ 4.1 MB)** | |
+| `scene` sprite | 153,600 | always |
+| `fb[0]`, `fb[1]` sprites | 307,200 | always |
+| Undo ring: 8 snapshots × 23,104 | 184,832 | always |
+| **Peak (paper mode with the renderer and undo ring)** | **≈ 4,764,576 (≈ 4.8 MB, ~57 % of 8 MB)** | |
 
-> Camera buffers are live only in the Camera screens; the vision workspace only while `Processing`/Review. They could share memory with the undo ring (Draw is not active at the same time) if PSRAM ever gets tight. At 33 % it should not.
+> The camera's 2.6 MB are live only while the camera is on (the Check and the countdown; it is switched off at the snap and by its lease when a paper screen is left). The paper-mode buffers of `game_paper.cpp` (≈ 1.5 MB) are allocated at the first Camera check and **kept until reboot**, so Review can re-threshold and a second photo needs no new allocation; a failed allocation is retried on the next entry to the Check. With 8 MB this leaves about 3 MB free; if PSRAM ever gets tight, they could be freed when the paper flow is left (the vision job must have finished first) or share memory with the undo ring (Draw is never active at the same time).
 
 ### 8.3 Flash (16 MB)
 

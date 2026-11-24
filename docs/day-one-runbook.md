@@ -394,7 +394,7 @@ There is no fps counter on the Check screen: judge by eye (smooth is at least ab
 **Success:** Review shows your drawing straightened, black as ground, **red as spikes**, **blue as bouncy**, the Start and Flag pins (draggable); tap the green tick: the level opens in Play. Watch the monitor:
 
 ```text
-[paper vision N ms ...: status S marks found ink ... blobs ...]
+[paper vision N ms, 1 pass: status S marks found ink ... blobs ... ink threshold T]
 [paper accept slot N]
 ```
 
@@ -405,7 +405,8 @@ Row 9 (exposure lock): the snap should look as bright as the preview just before
 | Red marks become **bouncy** (and blue become spikes) | row 7 | `CAM_SWAP_RB` |
 | Whole Review image mirrored / the drawing's text backwards | row 8 | `CAM_HMIRROR` |
 | Review image darker than the preview, or the snap looks grey | row 9 or 10 | lock not applied (the driver ignores it) or `AE_LEVEL`; write the GC0308 registers with `set_reg` (see the table) |
-| **"The camera missed the picture"** toast after the countdown | grab failed | read the monitor for `[camera] no frames`; retry |
+| **"The camera missed the picture"** toast after the countdown | grab failed, or still busy 3.5 s after "snap" (`[paper snap stalled ...]` in the monitor) | read the monitor for `[camera] no frames`; retry |
+| **"All 10 slots are full: delete one first"** on the green tick | every slot holds a level | nothing was saved and the level stays on Review: go back, delete a level in Levels, take the photo again |
 | Retake pulses yellow, or a pin lands on ink | marks not found, page not straight, or the pin placement | retake; pins are draggable on Review; note the `status` and photograph the screen (part 7) |
 
 ### 4.7 Entering and leaving 50 times
@@ -419,10 +420,10 @@ Build-plan Step 6: enter and leave the Check screen 50 times (Title -> Paper -> 
 **The number is printed.** After every capture the monitor shows:
 
 ```text
-[paper vision N ms : status S marks found ink 0.0xxx blobs B]
+[paper vision N ms, P pass: status S marks found ink 0.0xxx blobs B ink threshold T]
 ```
 
-The wording "this computer, not the device" is a leftover from the emulator: on the device `N` is measured with the chip's own timer (`esp_timer_get_time()` around `visionProcess`) and **is the number you want**. It includes the automatic silent retry (a poor first pass is repeated once, so a doubled number is normal for a dim photo). The thinner/thicker ink time, the stage times and the live-check time are **not printed** on the device.
+On the device `N` is measured with the chip's own timer (`esp_timer_get_time()` around `visionProcess`) and **is the number you want** (only the emulator adds a `[paper vision emu: ...]` line saying its time is the PC's). `P` is the number of label passes: `1 pass` normally; `2 passes (silent retry)` or `3 passes (silent retry)` when the first result was empty or too inky and the automatic silent retry ran (5.8 of the system design), which is why `N` is then up to about double. `N` also includes the 1-tick yields that let the watchdog's idle task run (about 1 ms each, roughly 20-30 per photo). The thinner/thicker ink time, the stage times and the live-check time are **not printed** on the device.
 
 For a PC reference, the whole pass takes about **9 ms** on a desktop CPU (`pio test -e native -f test_vision -vv`); the S3 at 240 MHz with software doubles is much slower, so expect **hundreds of milliseconds to a few seconds** (*a guess*).
 
@@ -434,8 +435,8 @@ is acceptable**: the Processing screen animates, and the screen always shows for
 **If it is over 10 s:**
 
 1. Try an optimisation flag: add `-O2` to `build_flags` of `[env:cores3]` in `platformio.ini` (ESP32 builds default to size optimisation; *unverified that it takes effect*), rebuild and compare.
-2. The vision task runs on core 0 at priority 1 while the camera task (priority 2) may still be streaming for the first two seconds after the snap and steal time (*unverified*). Compare `N` for a capture right after a Check with one taken after waiting.
-3. If the device **reboots during Processing** with `Task watchdog got triggered` in the monitor, the long computation starves core 0's idle task: report it (the fix is a yield in the vision loops or a longer watchdog timeout; do not guess on the day).
+2. The camera is switched off at the snap (`[camera off]` right after the shutter), so the camera task should not compete with the vision task on core 0 any more. If `N` still varies a lot between identical captures, note it.
+3. The vision code yields (a 1-tick `vTaskDelay`) between stages and every 64 rows, so core 0's idle task keeps feeding the task watchdog. If the device nevertheless **reboots during Processing** with `Task watchdog got triggered` in the monitor, report it with the monitor log (do not change the watchdog on the day).
 4. Ask for per-stage timings (one `Serial.printf` per stage in `lib/core/src/vision.cpp`; the PC test prints the same stages: find marks, homography + warp, whole pass, re-threshold, live check).
 
 ---
