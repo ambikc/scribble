@@ -2,9 +2,11 @@
 // OWNER: Paper agent.
 #include "camera.h"
 #include <M5Unified.h>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include "i2c_lock.h"
 #include "vision.h"
 
 namespace scribble {
@@ -12,17 +14,20 @@ namespace {
 inline int r8(unsigned p) { return int(((p >> 11) << 3) | (p >> 13)); }
 inline int g8(unsigned p) { return int((((p >> 5) & 63) << 2) | ((p >> 9) & 3)); }
 inline int b8(unsigned p) { return int(((p & 31) << 3) | ((p >> 2) & 7)); }
+inline int gray8(unsigned p) { return (77 * r8(p) + 150 * g8(p) + 29 * b8(p)) >> 8; }   // == vision.cpp grayOf(rOf, gOf, bOf)
 /** The snap's average of three frames, per channel in 8 bits, rounded like the simulator's Math.round(sum / 3). */
 inline uint16_t avg3(unsigned a, unsigned b, unsigned c) {
   return pack565((2 * (r8(a) + r8(b) + r8(c)) + 3) / 6, (2 * (g8(a) + g8(b) + g8(c)) + 3) / 6, (2 * (b8(a) + b8(b) + b8(c)) + 3) / 6);
 }
+/** Every buffer camera.cpp allocates goes through these two (Camera::bufferBytes(), the start/stop leak test in emu/camera_test.sh). */
+std::atomic<int64_t> heldBytes{0};
 }  // namespace
+size_t Camera::bufferBytes() { const int64_t n = heldBytes.load(); return n > 0 ? size_t(n) : 0; }
 }  // namespace scribble
 
 // =====================================================================================================================
 #ifndef EMU
 // =====================================================================================================================
-#include <atomic>
 #include <esp_camera.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
@@ -58,10 +63,22 @@ constexpr bool CAM_SWAP_BYTES = true;
 constexpr bool CAM_SWAP_RB = false;                                  // CONFIRMED: RGB565 (not BGR) per the same Linux format table. Still do the red-crayon check
 constexpr bool CAM_HMIRROR = false, CAM_VFLIP = false;               // UNVERIFIED on hardware: esp-bsp uses HFLIP 0 / VFLIP 0 for this module; how it is mounted decides. Must NOT be mirrored; 180 degrees is fine
 constexpr int FB_COUNT = 2;
+// Two frame sizes (hardware-notes row 15): QVGA while the exposure is free (Check: the preview and the live check only need 320 x 240),
+// VGA from lockExposure(true) to lockExposure(false) (the snap). CONFIRMED from the driver: a size switch needs a driver re-init.
+// gc0308.c set_framesize only rewrites the sensor's window / subsample registers (CONFIG_GC_SENSOR_SUBSAMPLE_MODE=y in this build:
+// QVGA = 1/2 subsample of the full 640 x 480 window, same field of view), but cam_hal.c sizes its frame buffers once in cam_config()
+// and drops every frame whose length differs ("cam_hal: FB-SIZE: %u != %u", in the shipped object too). esp32-camera's own
+// esp_camera_reconfigure() is deinit + init. So the switch is esp_camera_deinit + esp_camera_init (UNVERIFIED on hardware: its time).
+constexpr framesize_t PREVIEW_SIZE = FRAMESIZE_QVGA, SNAP_SIZE = FRAMESIZE_VGA;
+// The exposure lock across that re-init: the init resets the sensor (reg 0xfe = 0xf0 + the default table), which loses the locked AEC / AWB
+// state. So the lock is taken at QVGA, these page-0 registers are read, and after the VGA init they are written back with AEC / AWB off.
+// Register map: Linux gc0308.c (GC0308_EXP 0x03/0x04, GLOBAL_GAIN 0x50, AWB_R/G/B_GAIN 0x5a/0x5b/0x5c; its manual white-balance presets
+// write exactly 0x5a..0x5c with AWB off). UNVERIFIED on hardware: that these are all the AEC loop sets (row 9 / 15 checks the brightness).
+constexpr uint8_t KEEP_REGS[6] = {0x03, 0x04, 0x50, 0x5a, 0x5b, 0x5c};
 constexpr uint32_t RETRY_FAILED_MS = 3000;
-constexpr uint32_t BUS_ASK_MS = 300;                                 // the camera task waits this long for the game loop to park (one loop pass is <= 33 ms)
-constexpr uint32_t BUS_PARK_MAX_MS = 3000;                           // the game loop never stays parked longer than this
+constexpr uint32_t FRAME_POLL_MS = 4;                                // how often the task looks for a new frame (esp_camera_available_frames)
 static_assert(AE_LEVEL >= -2 && AE_LEVEL <= 2, "the GC0308 driver's set_ae_level rejects levels outside -2..2");
+static_assert(CAMERA_SNAP_SETTLE_FRAMES >= FB_COUNT, "the settle frames must flush every queued (stale) frame buffer");
 
 inline uint16_t fromSensor(uint16_t v) {
   if (CAM_SWAP_BYTES) v = uint16_t((v << 8) | (v >> 8));
@@ -69,7 +86,13 @@ inline uint16_t fromSensor(uint16_t v) {
   return v;
 }
 
-void* psram(size_t n) { return heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT); }
+void* psramAlloc(size_t n) {
+  void* p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (p) heldBytes.fetch_add(int64_t(n));
+  return p;
+}
+template <typename T> void psramFree(T*& p, size_t n) { if (p) { heap_caps_free(p); heldBytes.fetch_sub(int64_t(n)); p = nullptr; } }
+inline bool after(uint32_t now, uint32_t deadline) { return int32_t(now - deadline) >= 0; }
 }  // namespace
 
 struct Camera::Impl {
@@ -80,12 +103,7 @@ struct Camera::Impl {
   std::atomic<int> lockReq{-1};                  // -1 nothing, 0 unlock, 1 lock
   std::atomic<uint16_t*> grabDst{nullptr};
   std::atomic<uint8_t> grabState{uint8_t(Camera::Grab::Idle)};
-  // The internal I2C bus is used two ways that do not lock against each other: M5Unified/M5GFX drive the I2C_NUM_1 registers directly
-  // (touch, IMU, AXP2101, AW9523 from M5.update() on the game loop), esp32-camera's SCCB goes through the ESP-IDF i2c_master driver.
-  // M5GFX lgfx/v1/platforms/esp32/common.inl ("A port the application already opened ... is shared"): "the two sides are not serialized
-  // against each other (the application must not run them concurrently)". So every SCCB burst of the camera task runs while the game
-  // loop is parked in Camera::update(): 0 free, 1 the task asks, 2 the game loop is parked, 3 the task is done.
-  std::atomic<uint8_t> bus{0};
+  std::atomic<uint8_t> grabFail{uint8_t(Camera::GrabFail::None)};
   SemaphoreHandle_t mtx = nullptr;
   TaskHandle_t task = nullptr;
   bool held = false;                             // game thread: live() took the mutex, release() gives it back
@@ -95,48 +113,44 @@ struct Camera::Impl {
   uint8_t* gray[2] = {nullptr, nullptr};
   int front = -1;
   bool inited = false;
+  framesize_t size = PREVIEW_SIZE;               // what the driver was initialised with
+  bool locked = false;                           // exposure lock wanted (and applied when inited)
+  bool haveKeep = false; uint8_t keep[sizeof KEEP_REGS] = {};
+  uint32_t lastFrameAt = 0;                      // the no-frames watchdog (CAMERA_NO_FRAMES_MS)
 
-  bool busAcquire();
-  void busRelease(bool had) { if (had) bus = 3; }
+  enum class Fb : uint8_t { Got, Timeout, Interrupted };
+  bool allocBuffers();
+  void freeBuffers();
+  camera_config_t config(framesize_t fs) const;
+  bool initDriver(framesize_t fs);
+  void deinitDriver();
   bool startup();
-  bool startupLocked();
   void shutdown();
+  bool switchSize(framesize_t fs);
+  void applyLock(bool lock);
+  void writeLockRegs();
+  Fb fbGet(camera_fb_t*& fb, uint32_t deadline, bool interruptible);
   void publish(const camera_fb_t* fb);
   void doGrab();
-  void applyLock(bool lock);
+  void fail(const char* why);
   void run();
   static void trampoline(void* self) { static_cast<Impl*>(self)->run(); }
 };
 
-/** Camera task: ask the game loop to park (see `bus`). False if it did not answer in time (the SCCB burst then runs anyway, unguarded). */
-bool Camera::Impl::busAcquire() {
-  bus = 1;
-  const uint32_t t0 = millis();
-  while (bus.load() != 2) {
-    if (millis() - t0 > BUS_ASK_MS) {
-      uint8_t asked = 1;
-      if (bus.compare_exchange_strong(asked, 0)) { Serial.println("[camera] the game loop did not park: SCCB runs alongside M5.update()"); return false; }
-    }
-    vTaskDelay(1);
+bool Camera::Impl::allocBuffers() {
+  for (int i = 0; i < 2; i++) {
+    if (!buf[i]) buf[i] = static_cast<uint16_t*>(psramAlloc(CAMERA_FRAME_BYTES));
+    if (!gray[i]) gray[i] = static_cast<uint8_t*>(psramAlloc(size_t(QVGA_W) * QVGA_H));
+    if (!buf[i] || !gray[i]) { Serial.println("[camera] out of PSRAM for the live buffers"); return false; }
   }
   return true;
 }
-
-bool Camera::Impl::startup() {
-  for (int i = 0; i < 2; i++) {
-    if (!buf[i]) buf[i] = static_cast<uint16_t*>(psram(CAMERA_FRAME_BYTES));
-    if (!gray[i]) gray[i] = static_cast<uint8_t*>(psram(size_t(QVGA_W) * QVGA_H));
-    if (!buf[i] || !gray[i]) { Serial.println("[camera] out of PSRAM for the live buffers"); return false; }
-  }
-  const uint32_t t0 = millis();
-  const bool had = busAcquire();                                     // esp_camera_init talks SCCB for a few hundred ms: park the game loop
-  const bool ok = startupLocked();
-  busRelease(had);
-  Serial.printf("[camera] start %s in %u ms (the game loop was parked meanwhile)\n", ok ? "ok" : "FAILED", unsigned(millis() - t0));
-  return ok;
+/** Only with the driver stopped (nothing publishes) or under mtx. */
+void Camera::Impl::freeBuffers() {
+  for (int i = 0; i < 2; i++) { psramFree(buf[i], CAMERA_FRAME_BYTES); psramFree(gray[i], size_t(QVGA_W) * QVGA_H); }
 }
 
-bool Camera::Impl::startupLocked() {
+camera_config_t Camera::Impl::config(framesize_t fs) const {
   camera_config_t c;
   std::memset(&c, 0, sizeof c);
   c.pin_pwdn = -1; c.pin_reset = -1;                                 // CONFIRMED: no PWDN / RESET line (M5CoreS3 GC0308.cpp, esp-bsp BSP_CAMERA_RST NC)
@@ -148,77 +162,100 @@ bool Camera::Impl::startupLocked() {
   c.xclk_freq_hz = XCLK_HZ;
   c.ledc_timer = LEDC_TIMER_0; c.ledc_channel = LEDC_CHANNEL_0;     // CONFIRMED unused on the S3: LCD_CAM makes the clock, esp_camera.c defines CAMERA_ENABLE_OUT_CLOCK empty
   c.pixel_format = PIXFORMAT_RGB565;                                 // CONFIRMED: gc0308.c set_pixformat supports RGB565, YUV422, GRAYSCALE (no JPEG)
-  c.frame_size = FRAMESIZE_VGA;                                      // CONFIRMED: VGA is the GC0308 maximum (gc0308.c set_framesize clamps above it); 640 x 480 is the vision input
+  c.frame_size = fs;                                                 // CONFIRMED: VGA is the GC0308 maximum (gc0308.c set_framesize clamps above it); QVGA = its 1/2 subsample
   c.jpeg_quality = 12;
   c.fb_count = FB_COUNT;
   c.fb_location = CAMERA_FB_IN_PSRAM;
-  c.grab_mode = CAMERA_GRAB_LATEST;                                  // always the newest frame: the preview never lags behind
-  esp_err_t e = esp_camera_init(&c);
+  // CAMERA_GRAB_WHEN_EMPTY: the driver's cam_task copies a frame into a PSRAM buffer only while one is free, so frames nobody reads are
+  // not copied (with GRAB_LATEST it copies every sensor frame and replaces the queued one). The price is that up to FB_COUNT queued frames
+  // can be old: the task reads every frame as it comes (the preview lags by at most one frame) and the snap throws
+  // CAMERA_SNAP_SETTLE_FRAMES >= FB_COUNT away first.
+  c.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  return c;
+}
+
+/** esp_camera_init (+ one CAM_EN cycle and a retry) and the per-init sensor settings. All bus traffic under I2cGuard, delays outside it. */
+bool Camera::Impl::initDriver(framesize_t fs) {
+  const camera_config_t c = config(fs);
+  const uint32_t t0 = millis();
+  esp_err_t e;
+  { I2cGuard g; e = esp_camera_init(&c); }                           // SCCB probe, soft reset, the default table: a few hundred ms holding the bus
   if (e != ESP_OK) {
     // ESP_ERR_NOT_SUPPORTED (0x106) = nothing answered at 0x21 / wrong id; ESP_ERR_INVALID_STATE / NOT_FOUND = no bus on port 1.
     Serial.printf("[camera] init failed (0x%x); cycling CAM_EN (AW9523 P1_0) and trying once more\n", unsigned(e));
-    M5.In_I2C.bitOff(AW9523_ADDR, AW9523_OUT_P1, CAM_EN_BIT, 400000);
+    { I2cGuard g; M5.In_I2C.bitOff(AW9523_ADDR, AW9523_OUT_P1, CAM_EN_BIT, 400000); }
     vTaskDelay(pdMS_TO_TICKS(20));
-    M5.In_I2C.bitOn(AW9523_ADDR, AW9523_OUT_P1, CAM_EN_BIT, 400000);
+    { I2cGuard g; M5.In_I2C.bitOn(AW9523_ADDR, AW9523_OUT_P1, CAM_EN_BIT, 400000); }
     vTaskDelay(pdMS_TO_TICKS(50));
-    e = esp_camera_init(&c);
+    { I2cGuard g; e = esp_camera_init(&c); }
   }
   if (e != ESP_OK) { Serial.printf("[camera] init failed (0x%x)\n", unsigned(e)); return false; }
   sensor_t* s = esp_camera_sensor_get();
   if (s) {
-    Serial.printf("[camera] sensor pid 0x%02x (GC0308 = 0x9b)\n", unsigned(s->id.PID));
+    I2cGuard g;
     if (s->set_hmirror) s->set_hmirror(s, CAM_HMIRROR ? 1 : 0);      // reg 0x14 bit 0 (gc0308.c, Linux, Allwinner agree)
     if (s->set_vflip) s->set_vflip(s, CAM_VFLIP ? 1 : 0);            // reg 0x14 bit 1
     // CONFIRMED: implemented (AEC target 0xd3 = 0x48 + 8 * level; +1 = 0x50, the Allwinner driver's EV+1 value). How much +1 helps
     // white paper is a tuning question: AE_LEVEL in shared/constants.json.
     if (s->set_ae_level) s->set_ae_level(s, AE_LEVEL);
   }
-  front = -1;
   inited = true;
+  size = fs;
+  lastFrameAt = millis();
+  Serial.printf("[camera] init %s ok in %u ms, sensor pid 0x%02x (GC0308 = 0x9b)\n", fs == SNAP_SIZE ? "VGA" : "QVGA", unsigned(millis() - t0),
+                s ? unsigned(s->id.PID) : 0u);
+  if (locked) writeLockRegs();                                       // a re-init reset the sensor: put the frozen exposure back
   return true;
 }
 
-void Camera::Impl::shutdown() {
+void Camera::Impl::deinitDriver() {
   if (!inited) return;
-  esp_camera_deinit();                                               // stops XCLK and frees the driver's frame buffers
+  { I2cGuard g; esp_camera_deinit(); }                               // frees the driver's frame buffers; SCCB_Deinit leaves M5's bus alone (sccb_owns_i2c_port = false)
   inited = false;
+}
+
+bool Camera::Impl::startup() {
+  if (!allocBuffers()) return false;
+  front = -1;
+  locked = false; haveKeep = false;
+  return initDriver(PREVIEW_SIZE);                                   // a pending lock is applied right after (run())
+}
+
+void Camera::Impl::shutdown() {
+  deinitDriver();
   xSemaphoreTake(mtx, portMAX_DELAY);                                // wait for a reader that is still drawing the last frame
   front = -1;
-  for (int i = 0; i < 2; i++) { heap_caps_free(buf[i]); buf[i] = nullptr; heap_caps_free(gray[i]); gray[i] = nullptr; }
+  freeBuffers();
   xSemaphoreGive(mtx);
+  locked = false; haveKeep = false;
   state = uint8_t(State::Off);
-  Serial.println("[camera] off");
+  Serial.printf("[camera] off (camera buffers %u bytes, free PSRAM %u)\n", unsigned(Camera::bufferBytes()), unsigned(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
 }
 
-void Camera::Impl::publish(const camera_fb_t* fb) {
-  if (fb->width != size_t(CAM_W) || fb->height != size_t(CAM_H) || fb->format != PIXFORMAT_RGB565) return;   // not what we asked for: drop it
-  const int back = front < 0 ? 0 : 1 - front;                        // the reader only ever holds `front`
-  const uint16_t* in = reinterpret_cast<const uint16_t*>(fb->buf);
-  uint16_t* out = buf[back];
-  for (int i = 0; i < CAMERA_PIXELS; i++) out[i] = fromSensor(in[i]);
-  grayQvga(out, gray[back]);
-  xSemaphoreTake(mtx, portMAX_DELAY);
-  front = back;
-  frameNo.fetch_add(1);
-  xSemaphoreGive(mtx);
+void Camera::Impl::fail(const char* why) {
+  Serial.printf("[camera] %s\n", why);
+  shutdown();
+  state = uint8_t(State::Failed);
+  failedAt = millis();
 }
 
-/** Three frames averaged into grabDst. Runs in the camera task, so the game loop keeps animating. */
-void Camera::Impl::doGrab() {
-  uint16_t* dst = grabDst.load();
-  uint16_t* scratch = buf[front < 0 ? 0 : 1 - front];                // the back buffer: no reader looks at it
-  bool ok = dst != nullptr;
-  camera_fb_t* fb = nullptr;
-  for (int k = 0; ok && k < FRAME_AVG; k++) {                        // FRAME_AVG is 3: frames 1 and 2 are stored, frame 3 is read straight from the driver
-    fb = esp_camera_fb_get();
-    if (!fb || fb->width != size_t(CAM_W) || fb->height != size_t(CAM_H) || fb->format != PIXFORMAT_RGB565) { if (fb) esp_camera_fb_return(fb); ok = false; break; }
-    const uint16_t* in = reinterpret_cast<const uint16_t*>(fb->buf);
-    if (k == 0) for (int i = 0; i < CAMERA_PIXELS; i++) scratch[i] = fromSensor(in[i]);
-    else if (k == 1) for (int i = 0; i < CAMERA_PIXELS; i++) dst[i] = fromSensor(in[i]);
-    else for (int i = 0; i < CAMERA_PIXELS; i++) dst[i] = avg3(scratch[i], dst[i], fromSensor(in[i]));
-    esp_camera_fb_return(fb);
+/** Re-init the driver at another frame size (see PREVIEW_SIZE). The live buffers stay; the last published frame stays visible meanwhile. */
+bool Camera::Impl::switchSize(framesize_t fs) {
+  if (inited && size == fs) return true;
+  deinitDriver();
+  return initDriver(fs);
+}
+
+/** AEC and AWB off, then the kept registers back (after a re-init). Page 0 is selected by set_whitebal. */
+void Camera::Impl::writeLockRegs() {
+  sensor_t* s = esp_camera_sensor_get();
+  if (!s) return;
+  I2cGuard g;
+  if (s->set_whitebal) s->set_whitebal(s, 0);
+  if (s->set_reg) {
+    s->set_reg(s, 0xd2, 0x80, 0x00);
+    if (haveKeep) for (size_t i = 0; i < sizeof KEEP_REGS; i++) s->set_reg(s, KEEP_REGS[i], 0xff, keep[i]);
   }
-  grabState = uint8_t(ok ? Grab::Done : Grab::Failed);
 }
 
 void Camera::Impl::applyLock(bool lock) {
@@ -228,43 +265,144 @@ void Camera::Impl::applyLock(bool lock) {
   // AEC / AGC (Linux gc0308.c touches only bit 1 of 0x22; the Allwinner sunxi-vfe gc0308.c: AWB = 0x22 bit 1, auto exposure = 0xd2 bit 7,
   // auto gain "not supported": the AEC loop sets the gain too). Default 0x22 = 0x57, so clearing bits 0 / 2 would switch off some other
   // ISP block instead of freezing exposure. So: AWB with set_whitebal (0x22 bit 1, correct) and AEC (exposure + gain) with 0xd2 bit 7.
-  const bool hadBus = busAcquire();
-  const int on = lock ? 0 : 1;
-  if (s->set_whitebal) s->set_whitebal(s, on);                       // also selects register page 0, which the 0xd2 write needs
-  if (s->set_reg) s->set_reg(s, 0xd2, 0x80, on ? 0x80 : 0x00);
-  busRelease(hadBus);
+  const uint32_t t0 = millis();
+  if (lock) {
+    {
+      I2cGuard g;
+      if (s->set_whitebal) s->set_whitebal(s, 0);                    // also selects register page 0, which 0xd2 and KEEP_REGS need
+      if (s->set_reg) s->set_reg(s, 0xd2, 0x80, 0x00);
+      haveKeep = s->get_reg != nullptr;
+      for (size_t i = 0; haveKeep && i < sizeof KEEP_REGS; i++) { const int v = s->get_reg(s, KEEP_REGS[i], 0xff); if (v < 0) haveKeep = false; else keep[i] = uint8_t(v); }
+    }
+    locked = true;
+    if (!switchSize(SNAP_SIZE)) { fail("re-init at VGA failed"); return; }   // writes the lock back after the re-init
+  } else {
+    locked = false; haveKeep = false;
+    if (size != PREVIEW_SIZE) { if (!switchSize(PREVIEW_SIZE)) { fail("re-init at QVGA failed"); return; } }
+    if ((s = esp_camera_sensor_get()) == nullptr) return;
+    I2cGuard g;                                                      // explicit, whatever the default table says
+    if (s->set_whitebal) s->set_whitebal(s, 1);
+    if (s->set_reg) s->set_reg(s, 0xd2, 0x80, 0x80);
+  }
+  Serial.printf("[camera] exposure %s, %s, %u ms\n", lock ? "locked" : "auto", size == SNAP_SIZE ? "VGA" : "QVGA", unsigned(millis() - t0));
+}
+
+/** The next frame without esp_camera_fb_get()'s own 4 s wait: poll for a queued frame until `deadline`. Interruptible = give up early
+ *  (no failure) when the game wants something (lease ended, lock or snap asked). */
+Camera::Impl::Fb Camera::Impl::fbGet(camera_fb_t*& fb, uint32_t deadline, bool interruptible) {
+  fb = nullptr;
+  for (;;) {
+    if (esp_camera_available_frames() && (fb = esp_camera_fb_get()) != nullptr) { lastFrameAt = millis(); return Fb::Got; }
+    if (!want.load()) return Fb::Interrupted;
+    if (interruptible && (lockReq.load() >= 0 || grabState.load() == uint8_t(Grab::Busy))) return Fb::Interrupted;
+    if (after(millis(), deadline)) return Fb::Timeout;
+    vTaskDelay(pdMS_TO_TICKS(FRAME_POLL_MS));
+  }
+}
+
+/** One pass over the sensor frame: byte swap, the 640 x 480 preview frame and the 320 x 240 gray copy (== grayQvga of that frame). */
+void Camera::Impl::publish(const camera_fb_t* fb) {
+  if (fb->format != PIXFORMAT_RGB565 || fb->len < fb->width * fb->height * 2) return;
+  const bool qvga = fb->width == size_t(QVGA_W) && fb->height == size_t(QVGA_H);
+  if (!qvga && (fb->width != size_t(CAM_W) || fb->height != size_t(CAM_H))) return;   // not what we asked for: drop it
+  const int back = front < 0 ? 0 : 1 - front;                        // the reader only ever holds `front`
+  const uint16_t* in = reinterpret_cast<const uint16_t*>(fb->buf);
+  uint16_t* out = buf[back];
+  uint8_t* gr = gray[back];
+  if (qvga) {                                                        // each sensor pixel becomes a 2 x 2 block (two 32-bit stores)
+    for (int y = 0; y < QVGA_H; y++) {
+      const uint16_t* row = in + y * QVGA_W;
+      uint32_t* o0 = reinterpret_cast<uint32_t*>(out + (2 * y) * CAM_W);
+      uint32_t* o1 = reinterpret_cast<uint32_t*>(out + (2 * y + 1) * CAM_W);
+      uint8_t* g = gr + y * QVGA_W;
+      for (int x = 0; x < QVGA_W; x++) {
+        const uint16_t p = fromSensor(row[x]);
+        const uint32_t d = uint32_t(p) | (uint32_t(p) << 16);
+        o0[x] = d; o1[x] = d;
+        g[x] = uint8_t(gray8(p));                                    // grayQvga of four equal pixels = the pixel's gray
+      }
+    }
+  } else {
+    for (int y = 0; y < QVGA_H; y++) {
+      const uint16_t* i0 = in + (2 * y) * CAM_W; const uint16_t* i1 = i0 + CAM_W;
+      uint16_t* o0 = out + (2 * y) * CAM_W; uint16_t* o1 = o0 + CAM_W;
+      uint8_t* g = gr + y * QVGA_W;
+      for (int x = 0; x < QVGA_W; x++) {
+        const uint16_t a = fromSensor(i0[2 * x]), b = fromSensor(i0[2 * x + 1]), c = fromSensor(i1[2 * x]), d = fromSensor(i1[2 * x + 1]);
+        o0[2 * x] = a; o0[2 * x + 1] = b; o1[2 * x] = c; o1[2 * x + 1] = d;
+        g[x] = uint8_t((gray8(a) + gray8(b) + gray8(c) + gray8(d)) >> 2);   // == grayQvga (vision.cpp)
+      }
+    }
+  }
+  xSemaphoreTake(mtx, portMAX_DELAY);
+  front = back;
+  frameNo.fetch_add(1);
+  xSemaphoreGive(mtx);
+}
+
+/** The snap: VGA (normally already switched by lockExposure), CAMERA_SNAP_SETTLE_FRAMES thrown away, FRAME_AVG frames averaged into
+ *  grabDst. All within CAMERA_GRAB_BUDGET_MS. Runs in the camera task, so the game loop keeps animating. */
+void Camera::Impl::doGrab() {
+  const uint32_t t0 = millis(), deadline = t0 + uint32_t(CAMERA_GRAB_BUDGET_MS);
+  uint16_t* dst = grabDst.load();
+  auto finish = [&](Camera::GrabFail why, const char* msg) {
+    grabFail = uint8_t(why);
+    grabState = uint8_t(why == Camera::GrabFail::None ? Grab::Done : Grab::Failed);
+    if (msg) Serial.printf("[camera] snap failed after %u ms: %s\n", unsigned(millis() - t0), msg);
+  };
+  if (!dst) { finish(Camera::GrabFail::Camera, "no buffer"); return; }
+  if (!switchSize(SNAP_SIZE)) { finish(Camera::GrabFail::Camera, "re-init at VGA failed"); fail("re-init at VGA failed"); return; }
+  uint16_t* scratch = buf[front < 0 ? 0 : 1 - front];                // the back buffer: no reader looks at it
+  camera_fb_t* fb = nullptr;
+  for (int k = 0; k < CAMERA_SNAP_SETTLE_FRAMES; k++) {
+    if (fbGet(fb, deadline, false) != Fb::Got) { finish(want.load() ? Camera::GrabFail::Timeout : Camera::GrabFail::Camera, "no frames (settle)"); return; }
+    esp_camera_fb_return(fb);
+  }
+  for (int k = 0; k < FRAME_AVG; k++) {                              // FRAME_AVG is 3: frames 1 and 2 are stored, frame 3 is read straight from the driver
+    if (fbGet(fb, deadline, false) != Fb::Got) { finish(want.load() ? Camera::GrabFail::Timeout : Camera::GrabFail::Camera, "no frames"); return; }
+    if (fb->width != size_t(CAM_W) || fb->height != size_t(CAM_H) || fb->format != PIXFORMAT_RGB565 || fb->len < CAMERA_FRAME_BYTES) {
+      esp_camera_fb_return(fb); finish(Camera::GrabFail::Camera, "not a VGA RGB565 frame"); return;
+    }
+    const uint16_t* in = reinterpret_cast<const uint16_t*>(fb->buf);
+    if (k == 0) for (int i = 0; i < CAMERA_PIXELS; i++) scratch[i] = fromSensor(in[i]);
+    else if (k == 1) for (int i = 0; i < CAMERA_PIXELS; i++) dst[i] = fromSensor(in[i]);
+    else for (int i = 0; i < CAMERA_PIXELS; i++) dst[i] = avg3(scratch[i], dst[i], fromSensor(in[i]));
+    esp_camera_fb_return(fb);
+  }
+  finish(Camera::GrabFail::None, nullptr);
+  Serial.printf("[camera] snap in %u ms\n", unsigned(millis() - t0));
 }
 
 void Camera::Impl::run() {
-  int misses = 0;
   for (;;) {
+    if (want.load() && millis() - leaseAt.load() > uint32_t(CAMERA_IDLE_MS)) want = false;   // the lease ran out (also without update())
     if (!want.load()) {
-      if (inited) shutdown();
+      if (inited || buf[0]) shutdown();
       if (state.load() == uint8_t(State::Starting)) state = uint8_t(State::Off);
-      if (grabState.load() == uint8_t(Grab::Busy)) grabState = uint8_t(Grab::Failed);
+      if (grabState.load() == uint8_t(Grab::Busy)) { grabFail = uint8_t(GrabFail::Camera); grabState = uint8_t(Grab::Failed); }
       ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(250));
       continue;
     }
     if (!inited) {
+      if (grabState.load() == uint8_t(Grab::Busy)) { grabFail = uint8_t(GrabFail::Camera); grabState = uint8_t(Grab::Failed); }
       if (state.load() == uint8_t(State::Failed) && millis() - failedAt < RETRY_FAILED_MS) { ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100)); continue; }
       state = uint8_t(State::Starting);
-      if (!startup()) { state = uint8_t(State::Failed); failedAt = millis(); if (inited) shutdown(); else { for (int i = 0; i < 2; i++) { heap_caps_free(buf[i]); buf[i] = nullptr; heap_caps_free(gray[i]); gray[i] = nullptr; } } continue; }
+      if (!startup()) { fail("start failed"); continue; }
       state = uint8_t(State::Running);
       Serial.println("[camera] on");
-      misses = 0;
     }
     const int lr = lockReq.exchange(-1);
-    if (lr >= 0) applyLock(lr == 1);
+    if (lr >= 0) { applyLock(lr == 1); if (!inited) continue; }
     if (grabState.load() == uint8_t(Grab::Busy)) { doGrab(); continue; }
-    camera_fb_t* fb = esp_camera_fb_get();
-    if (!fb) {                                                       // the driver timed out: no sensor clock, wiring, ...
-      // CORRECTED: each esp_camera_fb_get() miss already waited FB_GET_TIMEOUT = 4 s (esp_camera.c), so 20 misses took 80 s. One miss
-      // (4 s without a single frame at ~15 fps) is a dead camera: Failed shows the "No camera found" panel; the lease retries every 3 s.
-      if (++misses >= 1) { Serial.println("[camera] no frames for 4 s"); shutdown(); state = uint8_t(State::Failed); failedAt = millis(); }
-      vTaskDelay(pdMS_TO_TICKS(10));
+    camera_fb_t* fb = nullptr;
+    const Fb r = fbGet(fb, lastFrameAt + uint32_t(CAMERA_NO_FRAMES_MS), true);
+    if (r == Fb::Interrupted) continue;
+    if (r == Fb::Timeout) {                                          // started, but no frame for CAMERA_NO_FRAMES_MS: no sensor clock, wiring, ...
+      // CORRECTED: this used to wait for one esp_camera_fb_get() timeout (FB_GET_TIMEOUT = 4 s, esp_camera.c); now the task polls
+      // esp_camera_available_frames() and times the gap itself. Failed shows the "No camera found" panel; the lease retries every 3 s.
+      fail("no frames for 1.5 s");
       continue;
     }
-    misses = 0;
     publish(fb);
     esp_camera_fb_return(fb);
     vTaskDelay(1);                                                   // let core 0's idle task (and the watchdog) breathe
@@ -288,14 +426,7 @@ bool Camera::begin() {
 }
 void Camera::end() { if (p_ && p_->want.exchange(false)) xTaskNotifyGive(p_->task); }
 void Camera::update(uint32_t nowMs) {
-  if (!p_) return;
-  uint8_t asked = 1;
-  if (p_->bus.compare_exchange_strong(asked, 2)) {                  // the camera task wants the I2C bus: park here (no M5.update() meanwhile)
-    const uint32_t t0 = millis();
-    while (p_->bus.load() == 2 && millis() - t0 < BUS_PARK_MAX_MS) vTaskDelay(1);
-    p_->bus = 0;
-  }
-  if (p_->want.load() && nowMs - p_->leaseAt.load() > uint32_t(CAMERA_IDLE_MS)) end();
+  if (p_ && p_->want.load() && nowMs - p_->leaseAt.load() > uint32_t(CAMERA_IDLE_MS)) end();
 }
 Camera::State Camera::state() const { return p_ ? State(p_->state.load()) : State::Off; }
 uint32_t Camera::frameNo() const { return p_ ? p_->frameNo.load() : 0; }
@@ -321,22 +452,25 @@ bool Camera::liveGray(uint8_t* dst, uint32_t& lastNo) {
 bool Camera::grabStart(uint16_t* dst) {
   if (!p_ || !dst || state() != State::Running || p_->grabState.load() == uint8_t(Grab::Busy)) return false;
   p_->grabDst = dst;
+  p_->grabFail = uint8_t(GrabFail::None);
   p_->grabState = uint8_t(Grab::Busy);
   xTaskNotifyGive(p_->task);
   return true;
 }
 Camera::Grab Camera::grabState() const { return p_ ? Grab(p_->grabState.load()) : Grab::Idle; }
+Camera::GrabFail Camera::grabFail() const { return p_ ? GrabFail(p_->grabFail.load()) : GrabFail::None; }
 void Camera::grabAck() { if (p_) p_->grabState = uint8_t(Grab::Idle); }
 bool Camera::grab(uint16_t* dst) {
   if (!grabStart(dst)) return false;
-  for (int i = 0; i < 400 && grabState() == Grab::Busy; i++) vTaskDelay(pdMS_TO_TICKS(5));
+  for (int i = 0; i < (CAMERA_GRAB_BUDGET_MS + 500) / 5 && grabState() == Grab::Busy; i++) vTaskDelay(pdMS_TO_TICKS(5));
   const bool ok = grabState() == Grab::Done;
   grabAck();
   return ok;
 }
-void Camera::lockExposure(bool lock) { if (p_) p_->lockReq = lock ? 1 : 0; }
+void Camera::lockExposure(bool lock) { if (p_ && p_->task) { p_->lockReq = lock ? 1 : 0; xTaskNotifyGive(p_->task); } }
 
 }  // namespace scribble
+
 
 // =====================================================================================================================
 #else   // EMU: test photos instead of a sensor
@@ -456,16 +590,25 @@ void blurred(const uint16_t* in, uint16_t* out, int R) {
 }
 
 int envInt(const char* n, int def) { const char* v = std::getenv(n); return v && *v ? std::atoi(v) : def; }
+
+/** A frame-sized buffer counted in Camera::bufferBytes() (the device's live buffers are counted the same way): freed at end(). */
+struct FrameBuf {
+  uint16_t* p = nullptr;
+  void alloc() { if (!p) { p = static_cast<uint16_t*>(std::calloc(CAMERA_PIXELS, sizeof(uint16_t))); if (p) heldBytes.fetch_add(int64_t(CAMERA_FRAME_BYTES)); } }
+  void free() { if (p) { std::free(p); p = nullptr; heldBytes.fetch_sub(int64_t(CAMERA_FRAME_BYTES)); } }
+  uint16_t* data() const { return p; }
+};
 }  // namespace
 
 struct Camera::Impl {
   bool leased = false, on = false, announcedOn = false; uint32_t leaseAt = 0, onAt = 0, lastGen = 0;
   std::string want, loaded; bool loadOk = false;
-  std::vector<uint16_t> base, soft, live; uint32_t frameNo = 0, noiseSeed = 12345;
-  Grab grab = Grab::Idle; uint32_t grabDoneAt = 0; bool grabOk = false;
-  bool held = false;
+  FrameBuf base, soft, live; uint32_t frameNo = 0, noiseSeed = 12345;    // base / soft = the "sensor" (the photo), live = the published frame
+  Grab grab = Grab::Idle; uint32_t grabDoneAt = 0, grabAt = 0; GrabFail fail = GrabFail::None; bool grabStalls = false;
+  bool held = false, vga = false; mutable bool saidNoFrames = false;
   int startMs = envInt("EMU_START_MS", 150), settleMs = envInt("EMU_SETTLE_MS", 900), grabMs = envInt("EMU_GRAB_MS", 200), noiseAmp = envInt("EMU_NOISE", 2);
   bool failing = envInt("EMU_CAMERA_FAIL", 0) != 0;          // pretend the sensor does not answer (the "No camera found" panel)
+  int stall = envInt("EMU_CAMERA_STALL", 0);                  // 1 = every snap times out (live view fine), 2 = starts but never a frame
 
   /** Which photo is wanted now: the script command `photo`, else EMU_PHOTO_CASE, else "file" if EMU_PHOTO is set, else "clean". */
   std::string desired() const {
@@ -479,7 +622,9 @@ struct Camera::Impl {
     if (d == loaded && loadOk) return true;
     if (d == loaded && !loadOk) return false;
     loaded = d; loadOk = false;
-    base.assign(CAMERA_PIXELS, 0); soft.assign(CAMERA_PIXELS, 0); live.assign(CAMERA_PIXELS, 0);
+    base.alloc(); soft.alloc(); live.alloc();
+    if (!base.p || !soft.p || !live.p) { std::fprintf(stderr, "[camera] out of memory\n"); return false; }
+    std::memset(base.p, 0, CAMERA_FRAME_BYTES);
     if (d == "file") { const char* f = std::getenv("EMU_PHOTO"); if (!f || !loadFile(f, base.data())) return false; }
     else {
       if (!loadGolden()) return false;
@@ -493,17 +638,26 @@ struct Camera::Impl {
     std::printf("[camera photo %s]\n", d.c_str()); std::fflush(stdout);
     return true;
   }
+  /** Camera off: every buffer goes (the device frees its live buffers and the driver's in shutdown()). */
+  void freeAll() { base.free(); soft.free(); live.free(); loaded.clear(); loadOk = false; frameNo = 0; }
   Camera::State state() const {
     if (!on) return State::Off;
     if (failing) return State::Failed;
-    return millis() - onAt < uint32_t(startMs) ? State::Starting : State::Running;
+    const uint32_t up = millis() - onAt;
+    if (up < uint32_t(startMs)) return State::Starting;
+    if (stall == 2 && up >= uint32_t(startMs + CAMERA_NO_FRAMES_MS)) {   // the device's no-frames watchdog
+      if (!saidNoFrames) { saidNoFrames = true; std::printf("[camera no frames for %d ms: failed]\n", CAMERA_NO_FRAMES_MS); std::fflush(stdout); }
+      return State::Failed;
+    }
+    return State::Running;
   }
   /** A new live frame at ~15 Hz: the soft picture for the first settleMs, then the sharp one; a little noise on every frame. */
   void pump() {
-    if (state() != State::Running || !ensureCase()) return;
+    if (state() != State::Running || stall == 2 || !ensureCase()) return;
     const uint32_t now = millis();
     if (frameNo > 0 && now - lastGen < 66) return;
     lastGen = now; frameNo++;
+    if (frameNo == 1) { std::printf("[camera buffers %u bytes]\n", unsigned(Camera::bufferBytes())); std::fflush(stdout); }
     const bool sharp = now - onAt >= uint32_t(startMs + settleMs);
     const uint16_t* src = sharp ? base.data() : soft.data();
     if (noiseAmp <= 0) { std::memcpy(live.data(), src, CAMERA_FRAME_BYTES); return; }
@@ -512,13 +666,15 @@ struct Camera::Impl {
       s = s * 1664525u + 1013904223u;
       const int n = int((s >> 24) * uint32_t(2 * noiseAmp + 1) >> 8) - noiseAmp;
       const unsigned p = src[i];
-      live[i] = pack565(c255(r8(p) + n), c255(g8(p) + n), c255(b8(p) + n));
+      live.p[i] = pack565(c255(r8(p) + n), c255(g8(p) + n), c255(b8(p) + n));
     }
   }
+  /** The device runs the sensor at QVGA in the check and at VGA from the exposure lock to the unlock (a driver re-init each way). */
+  void setVga(bool v) { if (v != vga) { vga = v; std::printf("[camera size %s]\n", v ? "vga" : "qvga"); std::fflush(stdout); } }
 };
 
 Camera::Camera() = default;
-Camera::~Camera() { delete p_; }
+Camera::~Camera() { if (p_) p_->freeAll(); delete p_; }
 const char* Camera::caseNames() { return "clean tilt dim dark faded noisy harsh upside-down tilt-noisy nomarks blank file"; }
 void Camera::setCase(const char* name) { if (!p_) p_ = new Impl(); p_->want = name ? name : ""; }
 
@@ -526,11 +682,15 @@ bool Camera::begin() {
   if (!p_) p_ = new Impl();
   Impl& m = *p_;
   m.leaseAt = millis(); m.leased = true;
-  if (!m.on) { m.on = true; m.onAt = millis(); m.announcedOn = false; std::printf(m.failing ? "[camera on: failed]\n" : "[camera on]\n"); std::fflush(stdout); }
-  return !m.failing;
+  if (!m.on) { m.on = true; m.onAt = millis(); m.announcedOn = false; m.saidNoFrames = false; std::printf(m.failing ? "[camera on: failed]\n" : "[camera on]\n"); std::fflush(stdout); }
+  return m.state() != State::Failed;
 }
 void Camera::end() {
-  if (p_ && p_->on) { p_->on = false; p_->leased = false; p_->grab = Grab::Idle; std::printf("[camera off]\n"); std::fflush(stdout); }
+  if (p_ && p_->on) {
+    p_->on = false; p_->leased = false; p_->grab = Grab::Idle; p_->vga = false;
+    p_->freeAll();
+    std::printf("[camera off]\n[camera buffers after off %u bytes]\n", unsigned(Camera::bufferBytes())); std::fflush(stdout);
+  }
 }
 void Camera::update(uint32_t nowMs) {
   if (p_ && p_->on && nowMs - p_->leaseAt > uint32_t(CAMERA_IDLE_MS)) end();
@@ -541,7 +701,7 @@ uint32_t Camera::frameNo() const { return p_ ? p_->frameNo : 0; }
 const uint16_t* Camera::live() {
   if (!p_) return nullptr;
   p_->pump();
-  if (p_->frameNo == 0 || p_->live.empty() || p_->state() != State::Running) return nullptr;
+  if (p_->frameNo == 0 || !p_->live.p || p_->state() != State::Running) return nullptr;
   return p_->live.data();
 }
 void Camera::release() {}
@@ -554,19 +714,39 @@ bool Camera::liveGray(uint8_t* dst, uint32_t& lastNo) {
 }
 
 bool Camera::grabStart(uint16_t* dst) {
-  if (!p_ || !dst || state() != State::Running || !p_->ensureCase()) return false;
-  std::memcpy(dst, p_->base.data(), CAMERA_FRAME_BYTES);             // the three frames of the real camera are identical here: the average is the photo itself
-  p_->grab = Grab::Busy; p_->grabDoneAt = millis() + uint32_t(p_->grabMs);
+  if (!p_ || !dst || state() != State::Running || p_->grab == Grab::Busy || !p_->ensureCase()) return false;
+  p_->setVga(true);
+  p_->fail = GrabFail::None; p_->grabAt = millis();
+  p_->grabStalls = p_->stall == 1;
+  if (p_->grabStalls) p_->grabDoneAt = p_->grabAt + uint32_t(CAMERA_GRAB_BUDGET_MS);   // no frame ever comes: the budget runs out
+  else {
+    std::memcpy(dst, p_->base.data(), CAMERA_FRAME_BYTES);           // the three frames of the real camera are identical here: the average is the photo itself
+    p_->grabDoneAt = p_->grabAt + uint32_t(p_->grabMs);
+  }
+  p_->grab = Grab::Busy;
   return true;
 }
 Camera::Grab Camera::grabState() const {
   if (!p_) return Grab::Idle;
-  if (p_->grab == Grab::Busy && millis() >= p_->grabDoneAt) p_->grab = Grab::Done;
+  if (p_->grab == Grab::Busy && int32_t(millis() - p_->grabDoneAt) >= 0) {
+    if (p_->grabStalls) {
+      p_->grab = Grab::Failed; p_->fail = GrabFail::Timeout;
+      std::printf("[camera snap timed out after %u ms]\n", unsigned(millis() - p_->grabAt)); std::fflush(stdout);
+    } else p_->grab = Grab::Done;
+  }
   return p_->grab;
 }
+Camera::GrabFail Camera::grabFail() const { return p_ ? p_->fail : GrabFail::None; }
 void Camera::grabAck() { if (p_) p_->grab = Grab::Idle; }
-bool Camera::grab(uint16_t* dst) { if (!grabStart(dst)) return false; if (p_) p_->grab = Grab::Done; grabAck(); return true; }
-void Camera::lockExposure(bool lock) { std::printf("[camera exposure %s]\n", lock ? "locked" : "auto"); std::fflush(stdout); }
+bool Camera::grab(uint16_t* dst) {
+  if (!grabStart(dst)) return false;
+  if (p_->grabStalls) { p_->grab = Grab::Idle; p_->fail = GrabFail::Timeout; return false; }
+  p_->grab = Grab::Done; grabAck(); return true;
+}
+void Camera::lockExposure(bool lock) {
+  std::printf("[camera exposure %s]\n", lock ? "locked" : "auto"); std::fflush(stdout);
+  if (p_ && p_->on) p_->setVga(lock);
+}
 
 }  // namespace scribble
 #endif
