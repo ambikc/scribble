@@ -49,8 +49,12 @@ static double atan2DegUp(double y, double x) {
 }
 
 VisionParams defaultParams() {
-  return { INK_THRESH, SAT_MIN, COLOR_V_MIN, MIN_BLOB, CLOSE_R, THICKEN_R, EDGE_MARGIN, BG_MIN, MARK_RATIO };
+  return { INK_THRESH, SAT_MIN, COLOR_V_MIN, MIN_BLOB, CLOSE_R, THICKEN_R, EDGE_MARGIN, BG_MIN, MARK_RATIO, nullptr, nullptr };
 }
+
+/** The optional yield hook of VisionParams (vision.h): lets a device task give the CPU away between stages. No effect on results. */
+static inline void yieldTo(const VisionParams* p) { if (p && p->yieldFn) p->yieldFn(p->yieldUser); }
+static constexpr int YIELD_ROWS = 64;                                 // the per-pixel loops yield every this many rows
 
 void grayQvga(const uint16_t* vga, uint8_t* out) {
   for (int y = 0; y < QVGA_H; y++) for (int x = 0; x < QVGA_W; x++) {
@@ -83,7 +87,7 @@ void addCandidate(Blob* list, int& n, const Blob& b) {
 }
 
 /** Adaptive threshold (integer test) + connected components on the QVGA gray image; returns the candidate count. */
-int findBlobs(const uint8_t* gray, double markRatio, uint8_t* mask, uint32_t* integ, Blob* blobs) {
+int findBlobs(const uint8_t* gray, double markRatio, uint8_t* mask, uint32_t* integ, Blob* blobs, const VisionParams* yp) {
   const int iw = QVGA_W + 1;
   for (int x = 0; x < iw; x++) integ[x] = 0;
   for (int y = 0; y < QVGA_H; y++) {
@@ -91,9 +95,11 @@ int findBlobs(const uint8_t* gray, double markRatio, uint8_t* mask, uint32_t* in
     uint32_t row = 0;
     for (int x = 0; x < QVGA_W; x++) { row += gray[y * QVGA_W + x]; integ[(y + 1) * iw + x + 1] = integ[y * iw + x + 1] + row; }
   }
+  yieldTo(yp);
   const int half = (MARK_WINDOW - 1) >> 1;
   const int ratioQ = int(jsRound(markRatio * 1024));              // MARK_RATIO in 1/1024
   for (int y = 0; y < QVGA_H; y++) {
+    if (y && y % YIELD_ROWS == 0) yieldTo(yp);
     const int y0 = imax(0, y - half), y1 = imin(QVGA_H, y + half + 1);
     for (int x = 0; x < QVGA_W; x++) {
       const int x0 = imax(0, x - half), x1 = imin(QVGA_W, x + half + 1);
@@ -102,6 +108,7 @@ int findBlobs(const uint8_t* gray, double markRatio, uint8_t* mask, uint32_t* in
       mask[y * QVGA_W + x] = (ga * 1024 < ratioQ * sum && sum - ga >= MARK_MIN_CONTRAST * area) ? 1 : 0;
     }
   }
+  yieldTo(yp);
   // 4-connected components; the integral image is no longer needed, so its memory is the stack
   uint32_t* stack = integ;
   int nb = 0;
@@ -124,6 +131,7 @@ int findBlobs(const uint8_t* gray, double markRatio, uint8_t* mask, uint32_t* in
     if (asp < MARK_ASPECT_MIN || asp > MARK_ASPECT_MAX || fill < MARK_FILL_MIN || fill > MARK_FILL_MAX) continue;
     addCandidate(blobs, nb, { area, double(sx) / area, double(sy) / area, bw, bh, fill });
   }
+  yieldTo(yp);
   return nb;
 }
 
@@ -178,8 +186,8 @@ bool bestQuad(const Blob* blobs, int n, Quad& best) {
 }
 
 /** Coarse search on a QVGA gray image: the ordered quad. */
-bool findQuadCoarse(const uint8_t* gray, double markRatio, uint8_t* mask, uint32_t* integ, Blob* blobs, Quad& q) {
-  const int n = findBlobs(gray, markRatio, mask, integ, blobs);
+bool findQuadCoarse(const uint8_t* gray, double markRatio, uint8_t* mask, uint32_t* integ, Blob* blobs, Quad& q, const VisionParams* yp = nullptr) {
+  const int n = findBlobs(gray, markRatio, mask, integ, blobs, yp);
   return bestQuad(blobs, n, q);
 }
 
@@ -202,8 +210,9 @@ int vgaGrayInt(const uint16_t* vga, int x, int y) {
 bool findMarks(const uint16_t* vga, const VisionParams& p, VisionWork& work, Marks& out) {
   MarkScratch& sc = work.scratch.mark;
   grayQvga(vga, sc.gray);
+  yieldTo(&p);
   Blob blobs[MARK_MAX_CANDIDATES]; Quad q;
-  if (!findQuadCoarse(sc.gray, p.markRatio, sc.mask, sc.integ, blobs, q)) return false;
+  if (!findQuadCoarse(sc.gray, p.markRatio, sc.mask, sc.integ, blobs, q, &p)) return false;
   // map the coarse blobs to their ordered points so we keep each blob's size
   double mcx[4], mcy[4], mR[4];
   for (int k = 0; k < 4; k++) {
@@ -281,11 +290,12 @@ void centreCropMap(int64_t hq[8]) {
   for (int i = 0; i < 8; i++) hq[i] = v[i];
 }
 
-void warp(const uint16_t* vga, const int64_t hq[8], uint16_t* out) {
+static void warpY(const uint16_t* vga, const int64_t hq[8], uint16_t* out, const VisionParams* yp) {
   const int64_t h0 = hq[0], h1 = hq[1], h2 = hq[2], h3 = hq[3], h4 = hq[4], h5 = hq[5], h6 = hq[6], h7 = hq[7];
   const int64_t NUMAX = 8589934592LL;                                  // 2^33: keeps nu * inv below 2^52, like the TypeScript
   const int64_t UMAX8 = int64_t(VGA_W - 2) * 256 + 255, VMAX8 = int64_t(VGA_H - 2) * 256 + 255;
   for (int y = 0; y < WORLD_H; y++) for (int x = 0; x < WORLD_W; x++) {
+    if (x == 0 && y && y % YIELD_ROWS == 0) yieldTo(yp);
     int sr = 0, sg = 0, sb = 0;
     for (int oy4 = 1; oy4 <= 3; oy4 += 2) for (int ox4 = 1; ox4 <= 3; ox4 += 2) {
       const int X4 = 4 * x + ox4, Y4 = 4 * y + oy4;
@@ -304,6 +314,7 @@ void warp(const uint16_t* vga, const int64_t hq[8], uint16_t* out) {
     out[y * WORLD_W + x] = pack565((sr + 131072) >> 18, (sg + 131072) >> 18, (sb + 131072) >> 18);
   }
 }
+void warp(const uint16_t* vga, const int64_t hq[8], uint16_t* out) { warpY(vga, hq, out, nullptr); }
 
 // =================================================================================================
 // Stages 3-5: convert, paper estimate, ink strength, and the colour class
@@ -328,6 +339,7 @@ static void analyse(VisionWork& work, const VisionParams& p) {
     }
     work.cls[i] = uint8_t(c);
   }
+  yieldTo(&p);
   // stage 4: paper estimate = max gray per 16 x 16 block, 3 x 3 blurred (kept x 256), bilinearly upsampled
   constexpr int gw = WORLD_W / BG_BLOCK, gh = WORLD_H / BG_BLOCK;   // 20 x 12
   int grid[gw * gh], blur[gw * gh];
@@ -351,6 +363,7 @@ static void analyse(VisionWork& work, const VisionParams& p) {
       bgp[y * W + x] = uint8_t((v + 131072) >> 18);
     }
   }
+  yieldTo(&p);
   // stage 5: ink strength (independent of the threshold)
   for (int i = 0; i < PAGE_N; i++) {
     const int bg = bgp[i], g = gray[i];
@@ -418,6 +431,7 @@ static void labelAndClean(VisionWork& work, const VisionParams& p, double& cover
   for (int k = 0; k < 3; k++) {
     for (int i = 0; i < PAGE_N; i++) A[i] = (work.ink[i] >= p.inkThresh && work.cls[i] == k) ? 1 : 0;
     blobs += despeckle(A, p.minBlob, stack);
+    yieldTo(&p);
     morph(A, T, p.closeR, true); morph(A, T, p.closeR, false);        // close: joins streaky wax gaps
     for (int i = 0; i < PAGE_N; i++) covered += A[i];
     // thicken THIN strokes only (see vision.ts)
@@ -426,6 +440,7 @@ static void labelAndClean(VisionWork& work, const VisionParams& p, double& cover
     for (int i = 0; i < PAGE_N; i++) B[i] = uint8_t(A[i] & (B[i] ^ 1));   // B = thin = closed and not opened
     morph(B, T, p.thickenR, true);                                    // B = grown
     for (int i = 0; i < PAGE_N; i++) if (A[i] | B[i]) bits[i] |= uint8_t(1 << k);
+    yieldTo(&p);
   }
   for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
     const int i = y * W + x; const bool edge = x < p.edgeMargin || y < p.edgeMargin || x >= W - p.edgeMargin || y >= H - p.edgeMargin;
@@ -470,6 +485,7 @@ static void finish(VisionWork& work, const VisionParams& p, bool marksFound, boo
   else if (orientGuess) status = VQ_ORIENT_GUESS;
   levelInit(level);
   level.fromPaper = true;
+  report.passes = 1;
   for (int y = 0; y < WORLD_H; y++) for (int x = 0; x < WORLD_W; x++) {
     const int l = work.labels[y * WORLD_W + x];
     if (l == 1) setBit(level.ground, x, y); else if (l == 2) setBit(level.spike, x, y); else if (l == 3) setBit(level.bouncy, x, y);
@@ -488,8 +504,11 @@ void visionProcessOnce(const uint16_t* vga, const VisionParams& p, VisionWork& w
   if (!(found && worldToVga(marks, hq))) { found = false; centreCropMap(hq); }   // marks missing (or a degenerate quad): centre-crop
   work.marksFound = found;
   if (found) work.marks = marks; else std::memset(&work.marks, 0, sizeof work.marks);
-  warp(vga, hq, work.straight565);
+  yieldTo(&p);
+  warpY(vga, hq, work.straight565, &p);
+  yieldTo(&p);
   analyse(work, p);
+  yieldTo(&p);
   finish(work, p, found, found && marks.orientGuess, level, report);
 }
 
@@ -504,9 +523,10 @@ void visionProcess(const uint16_t* vga, const VisionParams& p, VisionWork& work,
     const double factor = report.status == VQ_EMPTY ? 0.75 : 1.25;
     VisionParams p2 = p; p2.inkThresh = int(jsRound(p.inkThresh * factor));
     VisionReport r2;
+    yieldTo(&p);
     visionRethreshold(work, p2, level, r2);
-    if (r2.status == VQ_OK || r2.status == VQ_MARKS_MISSING || r2.status == VQ_ORIENT_GUESS) { report = r2; usedP = p2; }
-    else visionRethreshold(work, p, level, report);                    // keep the first result: same labels and level again
+    if (r2.status == VQ_OK || r2.status == VQ_MARKS_MISSING || r2.status == VQ_ORIENT_GUESS) { report = r2; usedP = p2; report.passes = 2; }
+    else { yieldTo(&p); visionRethreshold(work, p, level, report); report.passes = 3; }   // keep the first result: same labels and level again
   }
   if (used) *used = usedP;
 }

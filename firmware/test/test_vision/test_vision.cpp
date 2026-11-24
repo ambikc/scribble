@@ -264,6 +264,38 @@ void test_the_work_buffer_can_be_reused_for_the_next_photo() {
   checkPipeline(a); checkPipeline(b); checkPipeline(a);
 }
 
+// ---- the yield hook (device watchdog: the vision task must let IDLE0 run during a long job) ------------------------------------
+struct YieldLog { int calls; };
+static void countYield(void* u) { static_cast<YieldLog*>(u)->calls++; }
+
+void test_the_yield_hook_is_called_often_and_changes_nothing() {
+  static VisionWork W2; static Level L2;
+  const char* names[3] = { "clean", "faded", "nomarks" };              // one pass, the silent retry, and the centre-crop fallback
+  for (const char* name : names) {
+    const vgolden::Case& c = caseNamed(name); makePhoto(c);
+    VisionReport r1; VisionParams used1; visionProcess(photo, defaultParams(), W, L, r1, &used1);
+    YieldLog log{ 0 };
+    VisionParams p = defaultParams(); p.yieldFn = countYield; p.yieldUser = &log;
+    VisionReport r2; VisionParams used2; visionProcess(photo, p, W2, L2, r2, &used2);
+    snprintf(msg, sizeof msg, "case '%s': %d yields", name, log.calls);
+    TEST_ASSERT_TRUE_MESSAGE(log.calls >= 15, msg);                      // stages, every 64 rows, every colour class
+    TEST_ASSERT_EQUAL_MESSAGE(r1.status, r2.status, msg); TEST_ASSERT_EQUAL_MESSAGE(r1.blobs, r2.blobs, msg); TEST_ASSERT_EQUAL_MESSAGE(r1.passes, r2.passes, msg);
+    TEST_ASSERT_TRUE_MESSAGE(r1.inkCover == r2.inkCover && r1.bgMean == r2.bgMean, msg);
+    TEST_ASSERT_EQUAL_MESSAGE(used1.inkThresh, used2.inkThresh, msg);
+    TEST_ASSERT_EQUAL_MESSAGE(0, memcmp(&L, &L2, sizeof L), msg);           // the whole level, byte for byte
+    TEST_ASSERT_EQUAL_MESSAGE(0, memcmp(W.straight565, W2.straight565, sizeof W.straight565), msg);
+    TEST_ASSERT_EQUAL_MESSAGE(0, memcmp(W.ink, W2.ink, sizeof W.ink), msg);
+    TEST_ASSERT_EQUAL_MESSAGE(0, memcmp(W.labels, W2.labels, sizeof W.labels), msg);
+    TEST_ASSERT_EQUAL_HEX32_MESSAGE(c.crcScrb, scrbCrc(L2), msg);          // and still the golden one
+    // the re-threshold yields too (once per colour class at least)
+    const int before = log.calls; VisionReport r3; visionRethreshold(W2, p, L2, r3);
+    TEST_ASSERT_TRUE_MESSAGE(log.calls - before >= 3, msg);
+    TEST_ASSERT_EQUAL_MESSAGE(1, r3.passes, msg);
+    printf("yield hook, case '%s': %d calls in visionProcess (%d passes), %d in a re-threshold\n", name, before, r2.passes, log.calls - before);
+  }
+  TEST_ASSERT_EQUAL(1, defaultParams().yieldFn == nullptr ? 1 : 0);    // off unless the caller sets it: golden runs never yield
+}
+
 void test_timing_and_memory_report() {
   const vgolden::Case& c = caseNamed("clean"); makePhoto(c);
   using clk = std::chrono::steady_clock;
@@ -295,6 +327,7 @@ int main(int, char**) {
   RUN_TEST(test_the_drawn_level_is_recovered_and_pins_are_on_the_ledges);
   RUN_TEST(test_the_live_camera_check_matches_the_simulator);
   RUN_TEST(test_the_work_buffer_can_be_reused_for_the_next_photo);
+  RUN_TEST(test_the_yield_hook_is_called_often_and_changes_nothing);
   RUN_TEST(test_timing_and_memory_report);
   return UNITY_END();
 }

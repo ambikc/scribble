@@ -27,12 +27,18 @@ struct Pt { double x, y; };
 struct VisionParams {
   int inkThresh, satMin, colorVMin, minBlob, closeR, thickenR, edgeMargin, bgMin;
   double markRatio;
+  /** Optional yield hook (null = none; defaultParams() leaves it null). The pipeline calls yieldFn(yieldUser) between stages, once
+   *  per colour class in the clean-up and every 64 rows of the per-pixel loops, so a job on a device task can let other tasks
+   *  (IDLE, and with it the task watchdog) run: the device passes a vTaskDelay(1). It never changes a result. */
+  void (*yieldFn)(void* user);
+  void* yieldUser;
 };
 VisionParams defaultParams();                              // from config.h
 
 struct VisionReport {
   int status; bool marksFound, orientGuess;
   double inkCover, bgMean; int blobs;
+  int passes;                      // label + clean-up passes this call ran: 1, or 3 when visionProcess tried its silent retry (5.8)
 };
 
 /** Mark centres in VGA pixels, in PAGE order: top-left (the ring), top-right, bottom-right, bottom-left. */
