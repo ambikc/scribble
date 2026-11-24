@@ -96,9 +96,11 @@ struct EmuSpeaker {
     std::printf("[wav %u bytes%s]\n", unsigned(len == ~size_t(0) ? 0u : len), ok ? "" : " INVALID"); std::fflush(stdout); return ok;
   }
   void stop() {}
+  void stop(uint8_t) {}
   void setVolume(uint8_t v) { volume = v; std::printf("[volume %d]\n", int(v)); std::fflush(stdout); }
   uint8_t getVolume() const { return uint8_t(volume); }
   bool isPlaying() const { return false; }
+  size_t isPlaying(uint8_t) const { return 0; }  // like M5Unified: tones on that channel (playing + queued); none here, a tone is only printed
 };
 
 struct config_t { int dummy = 0; };
