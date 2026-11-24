@@ -8,7 +8,8 @@
 // are first moved aside to slotN.bad. Slots live in PSRAM (ps_malloc) on the device, malloc elsewhere.
 //
 // Behaviour notes (see test/test_store):
-//   * first run (no slot files at all and !firstRunDone): the three lessons go into slots 0-2 and firstRunDone is set;
+//   * first run (no slot FILE at all, by stat(), and !firstRunDone): the three lessons go into slots 0-2 and firstRunDone is set;
+//     a store with only corrupt files is not a first run; a slot path that is not a regular file (e.g. a directory) is an empty slot;
 //   * save() updates the in-memory slot even if the write fails (the old file stays on flash) and returns false then;
 //   * importBytes() with no free slot returns -1 and overwrites nothing;
 //   * settings.json is read/written by a tiny hand-written parser: unknown keys are ignored, a corrupt file means defaults.
@@ -51,7 +52,7 @@ class LevelStore {
  private:
   char root_[200] = "";
   bool writeAtomic(const char* path, const uint8_t* data, size_t n);   // <path minus ext>.tmp + fflush + fsync + rename
-  void loadSlot(int i);
+  bool loadSlot(int i);                           // true when a slot file exists (good or broken)
   Level* ensureSlot(int i);                       // allocate slots[i] + thumbs[i] if needed (nullptr if out of memory)
   void clearSlot(int i);
   void freeAll();

@@ -88,7 +88,8 @@ access is ordinary `stdio`, so `src/app/level_store.cpp` also builds for the PC)
 * **Saves are atomic**: write `slotN.tmp`, `fflush` + `fsync`, `rename` over `slotN.scrb`. A power cut, or a full or failing
   flash, leaves the old file intact; `save()` then returns `false` and the in-memory copy still follows the caller.
 * **A bad file never crashes and is never deleted**: the slot loads as empty with `broken[i]` set (a warning dot).
-* **First run** (no slot file at all and `firstRunDone` false): the three lessons are written into slots 0-2.
+* **First run** (no slot file at all, tested with `stat()`, and `firstRunDone` false): the three lessons are written into slots 0-2.
+  A store with only corrupt files is not a first run; a slot path that is not a regular file is an empty slot, never a broken one.
 * Slot data lives in PSRAM (`heap_caps_malloc(MALLOC_CAP_SPIRAM)`, plain `malloc` on the PC), allocated lazily; the thumbnails
   (1,080 bytes each) are kept in SRAM. Native tests: `test/test_store`.
 

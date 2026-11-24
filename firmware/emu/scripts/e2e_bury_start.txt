@@ -1,0 +1,25 @@
+# Draw over the Start ball so that the physics cannot place it, then Play. Before the fix Play respawned the ball every tick (no ball
+# on screen, a bloop 60 times a second). Game::startPlay now finds a buried pin (a ball placed there would be respawned at once) and
+# clears the hole the Draw screen clears when a pin is dropped (editing.h pinDrop); the ball then sits in that hole and gets out
+# with a jump or two, rolling right to the flag.
+# start: draw
+# slot: 5
+# expect: [screen play]
+# expect: [win slot 5]
+# expect-not: [sfx bloop]
+# one stroke that starts outside the pin grab radius (30 px left of the ball at 40,160) and wraps a loop over the ball
+100 down 10 160
+120 move 48 160
+140 move 40 150
+160 move 30 160
+240 up
+400 shot OUT/buried.ppm
+600 tap 294 216
+700 shot OUT/play.ppm
+1000 tilt 1
+1500 key jump
+2200 key jump
+2600 tilt 0.4
+3000 shot OUT/out.ppm
+9000 shot OUT/end.ppm
+9500 quit

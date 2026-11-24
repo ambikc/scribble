@@ -74,7 +74,7 @@ class Renderer {
   void straight565(const uint16_t* f, uint8_t strength = 90);
 
   // ---- full-screen effects ----
-  void flash(uint16_t color, float alpha);         // alpha 0..1
+  void flash(uint16_t color, float alpha);         // alpha 0..1; below ~1/32 (where the blend changes no pixel) it returns at once
   void dim(float alpha);                           // darken with ink, alpha 0..1
 
   // ---- raw pixels (rare) ----

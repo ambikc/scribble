@@ -8,7 +8,7 @@ under it is replaced by [`include/M5Unified.h`](include/M5Unified.h):
 | Device | Emulator |
 |---|---|
 | ILI9342C screen, 320 × 240 | M5GFX SDL window (or headless) |
-| Capacitive touch | mouse, left button = one finger |
+| Capacitive touch | mouse, left button = one finger; scripts can add a second finger (`down2` / `move2` / `up2`): `getCount()` and `getDetail(0)` then behave like M5Unified (when finger 1 lifts, slot 0 becomes finger 2 with its own `id`) |
 | BMI270 tilt | `←` `→` or `A` `D` (right edge down = +). Reports "flat on the table" (az = +0.97 g) until you press `U` (or run with `EMU_UPRIGHT=1`, or the script command `upright 1`): then it reports "standing on its base" (ay = -0.98 g) |
 | Keys | `Space` / `W` = jump key, `Esc` = back key (they reach the game as `keyJump` / `keyBack`; the device has neither) |
 | Speaker | `tone()` is printed as `[tone 550 Hz 60 ms]`, `playWav()` as `[wav 16044 bytes]`, `setVolume()` as `[volume 64]`. The game's audio adds `[sfx jump]` and `[say three wav]` / `[say three tone]` lines |
@@ -50,6 +50,7 @@ A script is a text file, one command per line, times in **virtual milliseconds**
 500 down 40 40         # finger down
 520 move 60 40         # finger moves
 540 up                 # finger up
+560 down2 250 150       # a SECOND finger down (move2 x y / up2 too): the game ends the touch and ignores the screen until all are up
 600 tilt 0.5           # accelerometer x in g (stays until changed)
 650 upright 1          # IMU says "standing on its base" (0 = flat on the table, the default); stays until changed
 700 key jump           # the jump key (or: back) pressed for 100 ms; also keydown <k> / keyup <k>
@@ -61,6 +62,9 @@ A script is a text file, one command per line, times in **virtual milliseconds**
 `emu/scripts/smoke.txt` visits every page of the hardware-check app; `emu/scripts/io.txt` exercises input, sound and the
 level store through the game (taps, a drag, tilt, upright, keys, volume cycling, the win jingle). Output lines such as `page BALL` and `[tone ...]`
 are plain text on stdout, so a test can `grep` them.
+
+`pio run -e emu_unit && SDL_VIDEODRIVER=dummy .pio/build/emu_unit/program` runs unit tests of `ui.cpp`, `input.cpp` and `renderer.cpp`
+on the emulated M5Unified (`emu/unit/unit_main.cpp`: same-tick taps, the second finger, the flash/dim fast paths); `emu/run_all.sh` runs it first.
 
 ## The camera and the paper flow
 

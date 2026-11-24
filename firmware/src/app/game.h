@@ -50,14 +50,17 @@ class Game {
   Renderer& r; UI& ui; Audio& audio; LevelStore& store; Input& input; Camera* cam;
   Screen screen = Screen::Title;
   float screenT = 0;                                 // seconds in this screen (the first tick after go() sees one tick, ~0.017)
-  float t = 0;                                       // seconds since begin(): for idle animations (title ball, win rays, pulses)
+  double t = 0;                                      // seconds for idle animations (title ball, win rays, pulses); a double that wraps
+                                                     // every T_WRAP s, so it never stops advancing or gets steppy (a float did after hours)
+  static constexpr double T_WRAP = 3600.0;           // multiple of 2 s and of 1/0.22 s (the title's fmod periods): one small jump an hour at most
   uint32_t nowMs = 0;                                // millis() at the start of this tick
   Screen menuFrom = Screen::Draw;                    // which screen the menu overlay returns to (Draw or Play)
   Screen cameFrom = Screen::Title;                   // where "back" in the camera flow goes
 
   Level level;                                       // the level being played / edited
   int slot = 0;
-  bool dirtySave = false; uint32_t lastEditAt = 0;
+  bool dirtySave = false; uint32_t lastEditAt = 0;   // saveCurrent() clears dirtySave only when the write worked (else it retries later)
+  uint32_t saveFailSaidAt = 0; bool saveFailSaid = false;   // "Could not save" toast, at most every SAVE_FAIL_TOAST_MS
   bool levelIsStarter = false;
 
   PlayState play; DrawState drawS; MenusState menus; PaperState paper;
@@ -76,7 +79,7 @@ class Game {
   void updateFx(float dt);                           // particles + toast + transition + the play fx timers (playFxStep); tick() calls it
   void playFxStep(float dt);                         // weak default: decays the PlayState fx timers; the Play agent may define its own
   void drawParts();                                  // idempotent per frame: draw() calls it after the screen unless the screen already did
-  void saveCurrent();
+  void saveCurrent();                                // write the level if dirtySave; on failure keep it dirty, toast (rate limited), retry later
   void markEdited();
   void openLevel(int slotIndex, bool play);          // load from the store; play ? startPlay : go(Draw)
   void newInSlot(int slotIndex);

@@ -1,0 +1,12 @@
+# A save that fails (here a directory sits where slot 5's temp file must go) keeps the level dirty: the autosave tries again
+# later instead of forgetting the edit, and the child sees "Could not save" once (rate limited), not on every attempt.
+# (Draw's autosave prints [level crc ...] on every attempt, so two lines = it retried.)
+# start: draw
+# slot: 5
+# mkdir: slot5.tmp/blocker
+# expect-count: 1 [toast Could not save]
+# expect-count: 2 [level crc
+100 down 60 60
+140 move 100 60
+200 up
+13000 quit

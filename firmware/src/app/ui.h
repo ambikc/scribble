@@ -46,7 +46,12 @@ class UI {
  public:
   static constexpr int MAX_BTNS = 32;
   Btn btns[MAX_BTNS]; int count = 0;
-  bool touchOnButton = false;              // the current touch began on a button: the screen must not also treat it as a stroke/jump
+  // The current touch began on a button: the screen must not also treat it as a stroke/jump. Both are set on the press and are
+  // still valid in the tick of the release, so a press and release that arrive in the SAME tick (a quick tap on a slow loop pass)
+  // still count as a button touch. touchOnButton clears on the first tick with no touch after the release (the old meaning,
+  // "while the current touch began on a button"); touchStartedOnButton keeps describing the last touch until the next press.
+  bool touchStartedOnButton = false;
+  bool touchOnButton = false;
 
   void begin() { count = 0; }
   bool add(const Btn& b);                  // false if full
