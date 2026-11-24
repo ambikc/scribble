@@ -126,10 +126,16 @@ inline Pin pinGrab(const Level& l, int x, int y) {
   if (std::fmin(ds, df) > PIN_GRAB_RADIUS) return Pin::None;
   return ds <= df ? Pin::Start : Pin::Flag;
 }
-/** The finger is at (x, y) while dragging `p`: the pin follows, kept inside the playfield. */
+/** The two corner chips (back, menu) win a touch within their 48 px box + HIT_FORGIVE 6 = 54 px of the top corners. A pin whose grab
+ *  centre sat there could never be touched again, so pinMove keeps the centre at least this far (58) from those corners. */
+constexpr int PIN_CHIP_CLEAR = 58;
+/** True when a touch at (x, y) lands on a corner chip's hit area (box + forgiveness), where the chip beats a pin grab. */
+inline bool inChipCorner(int x, int y) { return y <= 54 && (x <= 54 || x >= WORLD_W - 54); }
+/** The finger is at (x, y) while dragging `p`: the pin follows, kept inside the playfield and out from under the corner chips. */
 inline void pinMove(Level& l, Pin p, int x, int y) {
   const int cx = x < 8 ? 8 : x > WORLD_W - 8 ? WORLD_W - 8 : x;
-  const int cy = y < 8 ? 8 : y > WORLD_H - 2 ? WORLD_H - 2 : y;
+  int cy = y < 8 ? 8 : y > WORLD_H - 2 ? WORLD_H - 2 : y;
+  if ((cx < PIN_CHIP_CLEAR || cx > WORLD_W - PIN_CHIP_CLEAR) && cy < PIN_CHIP_CLEAR) cy = PIN_CHIP_CLEAR;   // never under a corner chip
   if (p == Pin::Start) { l.startX = cx; l.startY = cy; }
   else if (p == Pin::Flag) { l.flagX = cx; l.flagY = cy + FLAG_CENTER_DY; }
 }
