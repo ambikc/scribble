@@ -2,7 +2,7 @@
 //
 // Files live in LittleFS (on the device) or a directory (the emulator / native tests), used through plain stdio:
 //   <root>/slot0.scrb ... slot9.scrb     the .scrb bytes (docs/system-design.md section 4)
-//   <root>/settings.json                 {"sound":1,"lastSlot":0,"solvedMask":0,"firstRunDone":false,"standupSeen":false}
+//   <root>/settings.json                 {"sound":1,"lastSlot":0,"solvedMask":0,"firstRunDone":false,"standupSeen":false,"lessonsInstalled":true}
 // Saves are atomic: write slotN.tmp, fflush + fsync, rename over slotN.scrb (docs/system-design.md 4.4). A corrupt file shows
 // as an empty slot with a warning dot (`broken[i]`) and is never deleted: if the slot is later saved over or removed, the bytes
 // are first moved aside to slotN.bad. Slots live in PSRAM (ps_malloc) on the device, malloc elsewhere.
@@ -20,7 +20,9 @@
 
 namespace scribble {
 
-struct Settings { int sound = 1; int lastSlot = 0; uint32_t solvedMask = 0; bool firstRunDone = false; bool standupSeen = false; };
+// firstRunDone: the child has pressed Play inside Draw once (the Title then opens Play instead of the starter level in Draw).
+// lessonsInstalled: the three factory lessons were written once (never again, even if every level is deleted).
+struct Settings { int sound = 1; int lastSlot = 0; uint32_t solvedMask = 0; bool firstRunDone = false; bool standupSeen = false; bool lessonsInstalled = false; };
 
 /** A new blank level: a floor, a Start ball and a Flag, so Play works at once. Port of blankLevel(). */
 void blankLevel(Level& out);

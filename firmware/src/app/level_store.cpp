@@ -117,10 +117,12 @@ static void parseSettings(const char* json, Settings& s) {
   if (jsonInt(json, "solvedMask", &v)) s.solvedMask = uint32_t(v) & ((1u << SLOTS) - 1);
   if (jsonBool(json, "firstRunDone", &b)) s.firstRunDone = b;
   if (jsonBool(json, "standupSeen", &b)) s.standupSeen = b;
+  if (jsonBool(json, "lessonsInstalled", &b)) s.lessonsInstalled = b;
+  else s.lessonsInstalled = s.firstRunDone;                            // older settings files: the lessons went in with the first run
 }
 static int formatSettings(char* out, size_t cap, const Settings& s) {
-  return std::snprintf(out, cap, "{\"sound\":%d,\"lastSlot\":%d,\"solvedMask\":%lu,\"firstRunDone\":%s,\"standupSeen\":%s}\n",
-                       s.sound, s.lastSlot, static_cast<unsigned long>(s.solvedMask), s.firstRunDone ? "true" : "false", s.standupSeen ? "true" : "false");
+  return std::snprintf(out, cap, "{\"sound\":%d,\"lastSlot\":%d,\"solvedMask\":%lu,\"firstRunDone\":%s,\"standupSeen\":%s,\"lessonsInstalled\":%s}\n",
+                       s.sound, s.lastSlot, static_cast<unsigned long>(s.solvedMask), s.firstRunDone ? "true" : "false", s.standupSeen ? "true" : "false", s.lessonsInstalled ? "true" : "false");
 }
 
 // ---- the store -----------------------------------------------------------------------------------------------------
@@ -186,7 +188,7 @@ bool LevelStore::begin(const char* root) {
     char tmp[sizeof root_ + 24]; slotPath(tmp, sizeof tmp, root_, i, "tmp"); std::remove(tmp);   // a save that never finished
     if (loadSlot(i)) anyFile = true;
   }
-  if (!anyFile && !settings.firstRunDone) {                              // factory lessons in slots 0-2 (docs/game-design.md section 2)
+  if (!anyFile && !settings.lessonsInstalled) {                              // factory lessons in slots 0-2 (docs/game-design.md section 2)
     void (*const lessons[3])(Level&) = { starterLevel, lessonSpike, lessonBouncy };
     for (int i = 0; i < 3; i++) {
       Level* l = ensureSlot(i);
@@ -194,7 +196,7 @@ bool LevelStore::begin(const char* root) {
       lessons[i](*l);
       save(i, *l);
     }
-    settings.firstRunDone = true;
+    settings.lessonsInstalled = true;                                   // NOT firstRunDone: that becomes true when he presses Play inside Draw
     saveSettings();
   }
   return rootOk;

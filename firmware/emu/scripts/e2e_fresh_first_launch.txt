@@ -1,0 +1,9 @@
+# A brand-new device: the first Play tap on the Title opens the starter 'Bridge' in DRAW (the ghost finger shows how to cross the gap),
+# not an unwinnable level in Play. Pressing Draw's Play button marks the first run done; afterwards the Title's Play opens Play.
+# start: title
+# expect: [screen title]
+# expect: [screen draw]
+# expect-not: [screen play]
+300 tap 196 216
+3800 shot OUT/ghost.ppm
+4000 quit

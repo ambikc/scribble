@@ -54,7 +54,8 @@ void test_first_run_writes_the_three_lessons() {
   TEST_ASSERT_EQUAL_STRING("Bridge", s.slots[0]->name);
   TEST_ASSERT_EQUAL_STRING("Spikes", s.slots[1]->name);
   TEST_ASSERT_EQUAL_STRING("Bounce", s.slots[2]->name);
-  TEST_ASSERT_TRUE(s.settings.firstRunDone);
+  TEST_ASSERT_TRUE(s.settings.lessonsInstalled);
+  TEST_ASSERT_FALSE(s.settings.firstRunDone);                              // he has not pressed Play inside Draw yet
   TEST_ASSERT_EQUAL_INT(3, s.firstEmpty());
   TEST_ASSERT_TRUE(exists(P("settings.json")));
   TEST_ASSERT_FALSE(exists(P("slot0.tmp")));
@@ -63,7 +64,7 @@ void test_first_run_writes_the_three_lessons() {
   TEST_ASSERT_TRUE(t.begin(dir));
   Level want; lessonSpike(want); want.rev = 1;            // saved once: rev 1
   TEST_ASSERT_TRUE(sameLevel(want, *t.slots[1]));
-  TEST_ASSERT_TRUE(t.settings.firstRunDone);
+  TEST_ASSERT_TRUE(t.settings.lessonsInstalled); TEST_ASSERT_FALSE(t.settings.firstRunDone);
 }
 
 void test_lessons_are_not_rewritten_after_the_child_deletes_everything() {
@@ -193,7 +194,7 @@ void test_a_slot_path_that_is_not_a_file_is_empty_not_broken() {
   LevelStore s; s.begin(dir);
   TEST_ASSERT_FALSE(s.broken[5]); TEST_ASSERT_NULL(s.slots[5]);
   TEST_ASSERT_NOT_NULL(s.slots[0]); TEST_ASSERT_NOT_NULL(s.slots[1]); TEST_ASSERT_NOT_NULL(s.slots[2]);   // the lessons
-  TEST_ASSERT_TRUE(s.settings.firstRunDone);
+  TEST_ASSERT_TRUE(s.settings.lessonsInstalled);
   for (int i = 0; i < SLOTS; i++) TEST_ASSERT_FALSE(s.broken[i]);
 }
 
@@ -292,7 +293,7 @@ void test_settings_round_trip() {
   LevelStore t; t.begin(dir);
   TEST_ASSERT_EQUAL_INT(2, t.settings.sound); TEST_ASSERT_EQUAL_INT(6, t.settings.lastSlot);
   TEST_ASSERT_EQUAL_UINT32(513, t.settings.solvedMask);
-  TEST_ASSERT_TRUE(t.settings.firstRunDone); TEST_ASSERT_TRUE(t.settings.standupSeen);
+  TEST_ASSERT_TRUE(t.settings.lessonsInstalled); TEST_ASSERT_FALSE(t.settings.firstRunDone); TEST_ASSERT_TRUE(t.settings.standupSeen);
 }
 
 void test_settings_parser_is_tolerant() {
@@ -302,7 +303,8 @@ void test_settings_parser_is_tolerant() {
   TEST_ASSERT_EQUAL_INT(4, s.settings.lastSlot);
   TEST_ASSERT_EQUAL_UINT32((1u << SLOTS) - 1, s.settings.solvedMask);   // only ten bits
   TEST_ASSERT_TRUE(s.settings.standupSeen);
-  TEST_ASSERT_TRUE(s.settings.firstRunDone);                           // key missing and the store empty: the first run happened now
+  TEST_ASSERT_TRUE(s.settings.lessonsInstalled);                       // key missing and the store empty: the lessons went in now
+  TEST_ASSERT_FALSE(s.settings.firstRunDone);
 }
 
 void test_corrupt_settings_mean_defaults() {
