@@ -39,7 +39,7 @@
 | **level** | core | The `Level` struct, 1-bit layer helpers (`getBit`, `setBit`, brush stamping), the `.scrb` encoder/decoder (bytes ↔ struct), thumbnail generation. No file I/O. |
 | **physics** | core | Fixed-step ball simulation, collision, events. Pure function of `(World, Level, StepInput)`. |
 | **vision** | core | Camera frame → `Level`: **find the four corner marks, straighten the page (homography)**, grayscale/HSV, background-normalised threshold, colour classification, clean-up, pin placement, quality report. Also the **live Camera check** (distance, sharpness, light, tilt). |
-| **input** | platform | Reads touch and IMU, produces one `InputState` per tick (edge-detected touch, filtered tilt, grip-safe rules). |
+| **input** | platform | Reads touch and IMU, produces one `InputState` per tick (edge-detected touch, filtered tilt, grip-safe rules). One finger: a second finger ends the touch with a release and the screen is ignored until every finger is up. |
 | **camera** | platform | Starts/stops the sensor, delivers RGB565 **VGA** frames (and a down-sampled preview), **locks exposure and white balance** at the countdown, averages frames at capture. |
 | **renderer** | platform | Owns the scene sprite and frame sprites, dirty rectangles, camera-preview blit, screen transitions, particles. |
 | **audio** | platform | Plays synthesised tones **and small speech clips** (the spoken countdown) from a fixed queue on its own task (non-blocking). |
@@ -555,6 +555,9 @@ for (;;) {
 
 * **Physics is deterministic**: fixed `dt`, no `random()`, no wall-clock in the step. This is what makes ghost replays (stretch) possible.
 * Rendering is decoupled: if a frame takes long, physics still advances in 1/60 s steps.
+* Firmware details (`src/main.cpp`): `M5.update()` and the IMU read hold the internal-I2C lock (`src/app/i2c_lock.h`) shared with the
+  camera task; USB serial has a zero transmit timeout, so a PC that is not reading never stalls the loop; `-DSCRIBBLE_PERF=1`
+  (`env:cores3_perf`) prints the time spent in tick / draw / present once a second.
 
 ### 6.2 Rendering: a double-buffered sprite in PSRAM
 
@@ -654,7 +657,7 @@ Friction is part of the rolling model (game-design §6), applied only while `gro
 
 | Case | Rule |
 |------|------|
-| Ball deep inside ground after the player draws on it | After `MAX_PUSH` pushes, search a spiral up to 16 px for a free spot; if none, quietly respawn |
+| Ball deep inside ground after the player draws on it | After `MAX_PUSH` pushes, search a spiral up to 16 px for a free spot; if none, quietly respawn. A pin buried at Start is prevented: `Game::startPlay()` clears the pin-drop hole around a Start or Flag where a ball could not be placed, and saves the level |
 | Spike pixels touching ground | Spike wins (checked after the push) |
 | Left/right edge | Treated as solid; top is open; bottom is the pit |
 | Ball resting on a bouncy pad | Launches again each contact (a pogo); intended |

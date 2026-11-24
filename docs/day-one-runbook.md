@@ -206,7 +206,10 @@ pio device monitor
 
 (If you changed `TILT_AXIS` / `TILT_SIGN` in `input.h`, this build contains it.)
 
-**First boot takes a few seconds with a dark or empty screen**: the first LittleFS mount formats the 10 MB partition, once.
+**First boot can take a while on the "Getting ready..." screen**: when the first LittleFS mount fails (the very first start) the
+game shows "First start: preparing storage" and formats the 10 MB partition, once (possibly tens of seconds; do not switch it off).
+To time the game loop on the device, flash `pio run -e cores3_perf -t upload` instead: it prints one
+`[perf tick X us draw Y us present Z us passes P ticks T]` line per second (averages per call; P = loop passes, T = 60 Hz ticks).
 In the monitor you should see:
 
 ```text
@@ -448,7 +451,7 @@ is acceptable**: the Processing screen animates, and the screen always shows for
 | Upload says "Failed to connect" / "No serial data" | Not in download mode | Hold reset ~3 s until the green LED flashes, `pio device list` for the new port, upload with `--upload-port` |
 | **Upload succeeded but nothing happens** | Wrong partition table / old firmware / monitor opened too late | Press reset with the monitor open; `pio run -e cores3 -t erase`, then upload again |
 | **Boot loop** (screen flickers, monitor repeats `rst:` or a backtrace) | Crash at start (PSRAM config, a bad pointer) | Copy the first backtrace into your report. Try the hardware-check app (`-e hwcheck`): if that runs, the fault is in the game's start-up; erase flash (below) and re-flash. Do not keep power-cycling a loop |
-| **Blank (black or white) screen** | Backlight on but nothing drawn / first mount formatting | Wait 10 s on the first game boot. Reflash the hardware-check app: if INFO shows, the display is fine and the game is stuck; read the monitor |
+| **Blank (black or white) screen** | Backlight on but nothing drawn (the game draws "Getting ready..." before it mounts the storage, so a blank screen is not the formatting) | Wait 10 s on the first game boot. Reflash the hardware-check app: if INFO shows, the display is fine and the game is stuck; read the monitor |
 | **Red screen with white text** | `fatal()` in the game: no PSRAM, or the screen buffers could not be allocated | The text names it. `No PSRAM found`: check `-DBOARD_HAS_PSRAM` in `platformio.ini` and that PSRAM is present in INFO (*the board file may need the right PSRAM memory type; unverified*) |
 | **Touch dead** | Touch controller not started, wrong orientation | Hardware-check TOUCH page: does the red dot move? Reset. If only part of the screen works, note the dead zone |
 | **Sound silent** | Volume at Off or too low; the amplifier not enabled | Hardware-check SOUND page, volume 255. In the game, the speaker chip shows Off or Low; step it to Medium. If SOUND is silent on the check app, report it (the M5Unified speaker init is the suspect) |
@@ -456,7 +459,7 @@ is acceptable**: the Processing screen animates, and the screen always shows for
 | **"No camera found"** / `[camera] init failed (0x...)` | Camera power, SCCB bus, pins | Part 4.1 table. The rest of the game is unaffected |
 | **"Not enough memory for the camera"** toast, or `[paper] not enough PSRAM for the vision buffers` / `[camera] out of PSRAM` | Out of PSRAM (the camera needs about 1.2 MB, vision 0.8 MB, the game about 0.3 MB) | The boot line `PSRAM ... free ... KB` says how much is left; on a CoreS3 8 MB should be plenty. Report the number. If it is far below 8 MB, PSRAM is not configured right |
 | **The app freezes on Processing** | The vision task never finishes or starves a watchdog | Monitor: `Task watchdog got triggered` -> part 5, item 4. Otherwise wait 30 s (a slow first pass); reset; it is not data-destroying (nothing is saved until you tap the tick on Review) |
-| `LittleFS mount failed: levels will not be saved this session` | File system not mountable (wrong partition label, damaged flash) | The code mounts with `LittleFS.begin(true, "/littlefs")`, which formats on failure, so this means even formatting failed. **Erase flash** (below) and reflash. If it persists, the partition table is not the one in `partitions_16mb.csv`: check that the build used `board_build.partitions` |
+| `LittleFS mount failed: levels will not be saved this session` | File system not mountable (wrong partition label, damaged flash) | The code mounts with `LittleFS.begin(false, "/littlefs")` and, only if that fails, `LittleFS.begin(true, ...)`, which formats, so this means even formatting failed. **Erase flash** (below) and reflash. If it persists, the partition table is not the one in `partitions_16mb.csv`: check that the build used `board_build.partitions` |
 | Levels vanish or show a warning dot | Corrupt level | Never deleted: set aside as `slotN.bad`; read the partition back (part 3.3) and send it |
 
 **Erase everything and start over** (this wipes the app, the saved levels and settings; you have to upload again afterwards):
