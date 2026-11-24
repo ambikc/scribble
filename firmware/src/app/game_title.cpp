@@ -89,11 +89,16 @@ void Game::tickTitle(const InputState& in) {
   if (!hit) return;
   if (!std::strcmp(hit, "sound")) cycleSound();
   else if (!std::strcmp(hit, "levels")) { menus.deleteMode = false; go(Screen::Picker); }
-  else if (!std::strcmp(hit, "paper")) { cameFrom = Screen::Title; menus.pendingSlot = -1; go(store.settings.standupSeen ? Screen::Check : Screen::Standup); }
-  else if (!std::strcmp(hit, "draw")) {
+  else if (!std::strcmp(hit, "paper")) {
+    if (store.firstEmpty() < 0) { say("All 10 slots are full"); menus.deleteMode = false; go(Screen::Picker); return; }   // refuse early: the paper flow must never replace a level
+    cameFrom = Screen::Title; menus.pendingSlot = -1; go(store.settings.standupSeen ? Screen::Check : Screen::Standup);
+  } else if (!std::strcmp(hit, "draw")) {
     const int s = store.firstEmpty();
     if (s < 0) { say("All 10 slots are full"); menus.deleteMode = false; go(Screen::Picker); } else newInSlot(s);
   } else if (!std::strcmp(hit, "play")) {
+    // the very first time: the starter "Bridge" in Draw with the ghost finger (its gap cannot be crossed, Play would show an unwinnable level).
+    // firstRunDone becomes true when he presses Play inside Draw.
+    if (!store.settings.firstRunDone && store.slots[0]) { openLevel(0, false); return; }
     // the last level he played; if it is gone, the first one that exists; with an empty box, a fresh level to draw on
     int s = store.settings.lastSlot;
     if (s < 0 || s >= SLOTS || !store.slots[s]) { s = -1; for (int i = 0; i < SLOTS; i++) if (store.slots[i]) { s = i; break; } }

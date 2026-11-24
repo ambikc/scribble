@@ -101,7 +101,10 @@ void Game::tickChooser(const InputState& in) {
   bool any = false;
   for (int i = 0; i < SLOTS; i++) if (store.slots[i]) any = true;
   if (!std::strcmp(hit, "back")) go(any ? Screen::Picker : Screen::Title);
-  else if (!std::strcmp(hit, "paper")) { cameFrom = Screen::Chooser; go(store.settings.standupSeen ? Screen::Check : Screen::Standup); }
+  else if (!std::strcmp(hit, "paper")) {
+    if (store.firstEmpty() < 0) { say("All 10 slots are full"); menus.deleteMode = false; go(Screen::Picker); return; }   // refuse early (the paper flow must never replace a level)
+    cameFrom = Screen::Chooser; go(store.settings.standupSeen ? Screen::Check : Screen::Standup);
+  }
   else if (!std::strcmp(hit, "finger")) {
     const int p = menus.pendingSlot;
     const int s = (p >= 0 && p < SLOTS && !store.slots[p]) ? p : store.firstEmpty();

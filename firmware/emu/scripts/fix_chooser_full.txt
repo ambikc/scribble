@@ -1,0 +1,10 @@
+# All 10 slots full: the Chooser refuses the paper tile at once (Picker + toast) instead of starting the camera flow that would replace a level.
+# start: chooser
+# levels: 3=bridge 4=bridge 5=bridge 6=bridge 7=bridge 8=bridge 9=bridge
+# expect: [screen picker]
+# expect-not: [screen standup]
+# expect-not: [screen check]
+# expect-not: [screen draw]
+300 tap 84 140
+800 shot OUT/full.ppm
+1500 quit
