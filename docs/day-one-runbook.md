@@ -419,7 +419,7 @@ Build-plan Step 6: enter and leave the Check screen 50 times (Title -> Paper -> 
 **The number is printed.** After every capture the monitor shows:
 
 ```text
-[paper vision N ms (this computer, not the device): status S marks found ink 0.0xxx blobs B]
+[paper vision N ms : status S marks found ink 0.0xxx blobs B]
 ```
 
 The wording "this computer, not the device" is a leftover from the emulator: on the device `N` is measured with the chip's own timer (`esp_timer_get_time()` around `visionProcess`) and **is the number you want**. It includes the automatic silent retry (a poor first pass is repeated once, so a doubled number is normal for a dim photo). The thinner/thicker ink time, the stage times and the live-check time are **not printed** on the device.
