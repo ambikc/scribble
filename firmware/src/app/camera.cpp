@@ -32,22 +32,36 @@ inline uint16_t avg3(unsigned a, unsigned b, unsigned c) {
 namespace scribble {
 namespace {
 
-// ---- the CoreS3 camera: facts and guesses. EVERYTHING marked UNVERIFIED must be checked on a real device (docs/hardware-notes.md, "Camera bring-up").
-// GC0308 on the CoreS3 board: parallel 8-bit DVP into the ESP32-S3 LCD_CAM peripheral, control (SCCB) on the INTERNAL I2C bus (GPIO 11/12,
-// address 0x21, chip id register 0x00 = 0x9B: M5GFX's board detection probes exactly that), sensor rail = AXP2101 ALDO3 3.3 V, which
-// M5.begin() (M5Unified Power_Class) already switches on. CAM_RST is AW9523 P1_0.
-constexpr int PIN_XCLK = 2;                                          // UNVERIFIED on hardware (M5Stack CoreS3 camera example values)
-constexpr int PIN_PCLK = 45, PIN_VSYNC = 46, PIN_HREF = 38;          // UNVERIFIED on hardware
-constexpr int PIN_D0 = 39, PIN_D1 = 40, PIN_D2 = 41, PIN_D3 = 42, PIN_D4 = 15, PIN_D5 = 16, PIN_D6 = 48, PIN_D7 = 47;   // UNVERIFIED on hardware
-constexpr int XCLK_HZ = 20000000;                                    // UNVERIFIED on hardware (GC0308: 10..27 MHz)
-constexpr bool SCCB_ON_INTERNAL_I2C = true;                          // UNVERIFIED on hardware: share M5Unified's I2C port (pin_sccb_sda = -1) instead of opening a second one on GPIO 11/12
-constexpr uint8_t AW9523_ADDR = 0x58, AW9523_OUT_P1 = 0x03, CAM_RST_BIT = 0x01;   // UNVERIFIED on hardware: CAM_RST = P1_0; M5GFX uses P1_1 = LCD_RST on the same register
-// Pixel format quirks of the sensor + driver. All three are decided by looking at a live picture (hardware-notes.md):
-constexpr bool CAM_SWAP_BYTES = true;                                // UNVERIFIED on hardware: esp32-camera hands RGB565 as big-endian byte pairs; false if the preview looks like noise
-constexpr bool CAM_SWAP_RB = false;                                  // UNVERIFIED on hardware: true if a red crayon looks blue in the preview (red/blue would swap the spike/bouncy layers!)
-constexpr bool CAM_HMIRROR = false, CAM_VFLIP = false;               // UNVERIFIED on hardware: the page must NOT be mirrored (a mirrored page cannot be straightened); a 180 degree turn is fine (the ring decides)
+// ---- the CoreS3 camera: facts and guesses (docs/hardware-notes.md, "Camera bring-up", has the sources for every line).
+// Each value is tagged: CONFIRMED (matches the vendor sources), CORRECTED (the first guess was wrong; fixed from the sources), or
+// UNVERIFIED on hardware (no source settles it: decided at the first power-on).
+// The build: platform espressif32@8.0.0 ships Arduino-ESP32 3.3.x on ESP-IDF 5.5 (framework-arduinoespressif32-esp32s3-libs 3.3.12),
+// NOT 2.0.x: Wire and esp32-camera's SCCB both use the new i2c_master driver (sdkconfig CONFIG_SCCB_HARDWARE_I2C_DRIVER_NEW).
+// GC0308 on the CoreS3 board: parallel 8-bit DVP into the ESP32-S3 LCD_CAM peripheral, control (SCCB) on the INTERNAL I2C bus (I2C_NUM_1,
+// SDA 12 / SCL 11, address 0x21, chip id register 0x00 = 0x9B: M5GFX's board detection probes exactly that), sensor rail = AXP2101
+// ALDO3 3.3 V and camera enable = AW9523 P1_0, both switched on by M5.begin() before anything here runs.
+// CORRECTED: no XCLK from the ESP32 (the module has its own clock): M5CoreS3 src/utility/GC0308.cpp `.pin_xclk = -1`, esp-bsp
+// m5stack_core_s3.h `BSP_CAMERA_GPIO_XCLK GPIO_NUM_NC`. GPIO 2 is Port A SDA (M5Unified pin table): driving 20 MHz on it broke Port A.
+constexpr int PIN_XCLK = -1;
+constexpr int PIN_PCLK = 45, PIN_VSYNC = 46, PIN_HREF = 38;          // CONFIRMED: M5CoreS3 GC0308.cpp, esp-bsp BSP_CAMERA_PCLK/VSYNC/HSYNC
+constexpr int PIN_D0 = 39, PIN_D1 = 40, PIN_D2 = 41, PIN_D3 = 42, PIN_D4 = 15, PIN_D5 = 16, PIN_D6 = 48, PIN_D7 = 47;   // CONFIRMED: same two sources (D0..D7 = Y2..Y9)
+constexpr int XCLK_HZ = 20000000;                                    // CONFIRMED: M5CoreS3 and esp-bsp (BSP_CAMERA_XCLK_CLOCK_MHZ 20). With no XCLK pin it only sets LCD_CAM's clock divider (ll_cam.c)
+constexpr bool SCCB_ON_INTERNAL_I2C = true;                          // CONFIRMED: share M5Unified's port 1 (pin_sccb_sda = -1): SCCB_Use_Port + i2c_master_get_bus_handle finds the bus Wire1 opened for M5GFX
+// CORRECTED (name): AW9523 P1_0 is the camera ENABLE (esp-bsp BSP_CAMERA_EN = IO_EXPANDER_PIN_NUM_8), not a reset; there is no reset or PWDN pin
+// (esp-bsp BSP_CAMERA_RST NC, M5CoreS3 pin_pwdn/pin_reset -1). M5GFX's CoreS3 power-on (board_detect/m5/pmic_ops.hpp) makes P1_0 an output
+// (AW9523 reg 0x05 = 0x0C) and drives it high (reg 0x03 |= 0x03, with P1_1 = LCD_RST) during M5.begin(), and reads the camera id after that.
+constexpr uint8_t AW9523_ADDR = 0x58, AW9523_OUT_P1 = 0x03, CAM_EN_BIT = 0x01;
+// Pixel format of sensor + driver:
+// CONFIRMED: the GC0308 sends RGB565 high byte first (Linux gc0308.c: OUT_FORMAT 6 = MEDIA_BUS_FMT_RGB565_2X8_BE) and esp32-camera stores the
+// bytes as received (cam_hal.c swap_data = 0 -> ll_cam.c cam_byte_order), so a little-endian uint16_t read needs the swap.
+constexpr bool CAM_SWAP_BYTES = true;
+constexpr bool CAM_SWAP_RB = false;                                  // CONFIRMED: RGB565 (not BGR) per the same Linux format table. Still do the red-crayon check
+constexpr bool CAM_HMIRROR = false, CAM_VFLIP = false;               // UNVERIFIED on hardware: esp-bsp uses HFLIP 0 / VFLIP 0 for this module; how it is mounted decides. Must NOT be mirrored; 180 degrees is fine
 constexpr int FB_COUNT = 2;
 constexpr uint32_t RETRY_FAILED_MS = 3000;
+constexpr uint32_t BUS_ASK_MS = 300;                                 // the camera task waits this long for the game loop to park (one loop pass is <= 33 ms)
+constexpr uint32_t BUS_PARK_MAX_MS = 3000;                           // the game loop never stays parked longer than this
+static_assert(AE_LEVEL >= -2 && AE_LEVEL <= 2, "the GC0308 driver's set_ae_level rejects levels outside -2..2");
 
 inline uint16_t fromSensor(uint16_t v) {
   if (CAM_SWAP_BYTES) v = uint16_t((v << 8) | (v >> 8));
@@ -66,6 +80,12 @@ struct Camera::Impl {
   std::atomic<int> lockReq{-1};                  // -1 nothing, 0 unlock, 1 lock
   std::atomic<uint16_t*> grabDst{nullptr};
   std::atomic<uint8_t> grabState{uint8_t(Camera::Grab::Idle)};
+  // The internal I2C bus is used two ways that do not lock against each other: M5Unified/M5GFX drive the I2C_NUM_1 registers directly
+  // (touch, IMU, AXP2101, AW9523 from M5.update() on the game loop), esp32-camera's SCCB goes through the ESP-IDF i2c_master driver.
+  // M5GFX lgfx/v1/platforms/esp32/common.inl ("A port the application already opened ... is shared"): "the two sides are not serialized
+  // against each other (the application must not run them concurrently)". So every SCCB burst of the camera task runs while the game
+  // loop is parked in Camera::update(): 0 free, 1 the task asks, 2 the game loop is parked, 3 the task is done.
+  std::atomic<uint8_t> bus{0};
   SemaphoreHandle_t mtx = nullptr;
   TaskHandle_t task = nullptr;
   bool held = false;                             // game thread: live() took the mutex, release() gives it back
@@ -76,7 +96,10 @@ struct Camera::Impl {
   int front = -1;
   bool inited = false;
 
+  bool busAcquire();
+  void busRelease(bool had) { if (had) bus = 3; }
   bool startup();
+  bool startupLocked();
   void shutdown();
   void publish(const camera_fb_t* fb);
   void doGrab();
@@ -85,34 +108,58 @@ struct Camera::Impl {
   static void trampoline(void* self) { static_cast<Impl*>(self)->run(); }
 };
 
+/** Camera task: ask the game loop to park (see `bus`). False if it did not answer in time (the SCCB burst then runs anyway, unguarded). */
+bool Camera::Impl::busAcquire() {
+  bus = 1;
+  const uint32_t t0 = millis();
+  while (bus.load() != 2) {
+    if (millis() - t0 > BUS_ASK_MS) {
+      uint8_t asked = 1;
+      if (bus.compare_exchange_strong(asked, 0)) { Serial.println("[camera] the game loop did not park: SCCB runs alongside M5.update()"); return false; }
+    }
+    vTaskDelay(1);
+  }
+  return true;
+}
+
 bool Camera::Impl::startup() {
   for (int i = 0; i < 2; i++) {
     if (!buf[i]) buf[i] = static_cast<uint16_t*>(psram(CAMERA_FRAME_BYTES));
     if (!gray[i]) gray[i] = static_cast<uint8_t*>(psram(size_t(QVGA_W) * QVGA_H));
     if (!buf[i] || !gray[i]) { Serial.println("[camera] out of PSRAM for the live buffers"); return false; }
   }
+  const uint32_t t0 = millis();
+  const bool had = busAcquire();                                     // esp_camera_init talks SCCB for a few hundred ms: park the game loop
+  const bool ok = startupLocked();
+  busRelease(had);
+  Serial.printf("[camera] start %s in %u ms (the game loop was parked meanwhile)\n", ok ? "ok" : "FAILED", unsigned(millis() - t0));
+  return ok;
+}
+
+bool Camera::Impl::startupLocked() {
   camera_config_t c;
   std::memset(&c, 0, sizeof c);
-  c.pin_pwdn = -1; c.pin_reset = -1;                                 // UNVERIFIED on hardware: no PWDN; CAM_RST is behind the AW9523 (pulsed below if the sensor does not answer)
+  c.pin_pwdn = -1; c.pin_reset = -1;                                 // CONFIRMED: no PWDN / RESET line (M5CoreS3 GC0308.cpp, esp-bsp BSP_CAMERA_RST NC)
   c.pin_xclk = PIN_XCLK;
   c.pin_sccb_sda = SCCB_ON_INTERNAL_I2C ? -1 : 12; c.pin_sccb_scl = SCCB_ON_INTERNAL_I2C ? -1 : 11;
-  c.sccb_i2c_port = SCCB_ON_INTERNAL_I2C ? int(M5.In_I2C.getPort()) : 1;
+  c.sccb_i2c_port = SCCB_ON_INTERNAL_I2C ? int(M5.In_I2C.getPort()) : 1;   // I2C_NUM_1 (M5Unified.inl: in_port = I2C_NUM_1 on the S3)
   c.pin_d0 = PIN_D0; c.pin_d1 = PIN_D1; c.pin_d2 = PIN_D2; c.pin_d3 = PIN_D3; c.pin_d4 = PIN_D4; c.pin_d5 = PIN_D5; c.pin_d6 = PIN_D6; c.pin_d7 = PIN_D7;
   c.pin_vsync = PIN_VSYNC; c.pin_href = PIN_HREF; c.pin_pclk = PIN_PCLK;
   c.xclk_freq_hz = XCLK_HZ;
-  c.ledc_timer = LEDC_TIMER_0; c.ledc_channel = LEDC_CHANNEL_0;     // UNVERIFIED on hardware: nobody else in this firmware uses LEDC
-  c.pixel_format = PIXFORMAT_RGB565;
-  c.frame_size = FRAMESIZE_VGA;                                      // 640 x 480: the vision core's input (docs/system-design.md 5.2)
+  c.ledc_timer = LEDC_TIMER_0; c.ledc_channel = LEDC_CHANNEL_0;     // CONFIRMED unused on the S3: LCD_CAM makes the clock, esp_camera.c defines CAMERA_ENABLE_OUT_CLOCK empty
+  c.pixel_format = PIXFORMAT_RGB565;                                 // CONFIRMED: gc0308.c set_pixformat supports RGB565, YUV422, GRAYSCALE (no JPEG)
+  c.frame_size = FRAMESIZE_VGA;                                      // CONFIRMED: VGA is the GC0308 maximum (gc0308.c set_framesize clamps above it); 640 x 480 is the vision input
   c.jpeg_quality = 12;
   c.fb_count = FB_COUNT;
   c.fb_location = CAMERA_FB_IN_PSRAM;
   c.grab_mode = CAMERA_GRAB_LATEST;                                  // always the newest frame: the preview never lags behind
   esp_err_t e = esp_camera_init(&c);
   if (e != ESP_OK) {
-    Serial.printf("[camera] init failed (0x%x); pulsing CAM_RST and trying once more\n", unsigned(e));
-    M5.In_I2C.bitOff(AW9523_ADDR, AW9523_OUT_P1, CAM_RST_BIT, 400000);   // UNVERIFIED on hardware
+    // ESP_ERR_NOT_SUPPORTED (0x106) = nothing answered at 0x21 / wrong id; ESP_ERR_INVALID_STATE / NOT_FOUND = no bus on port 1.
+    Serial.printf("[camera] init failed (0x%x); cycling CAM_EN (AW9523 P1_0) and trying once more\n", unsigned(e));
+    M5.In_I2C.bitOff(AW9523_ADDR, AW9523_OUT_P1, CAM_EN_BIT, 400000);
     vTaskDelay(pdMS_TO_TICKS(20));
-    M5.In_I2C.bitOn(AW9523_ADDR, AW9523_OUT_P1, CAM_RST_BIT, 400000);
+    M5.In_I2C.bitOn(AW9523_ADDR, AW9523_OUT_P1, CAM_EN_BIT, 400000);
     vTaskDelay(pdMS_TO_TICKS(50));
     e = esp_camera_init(&c);
   }
@@ -120,9 +167,11 @@ bool Camera::Impl::startup() {
   sensor_t* s = esp_camera_sensor_get();
   if (s) {
     Serial.printf("[camera] sensor pid 0x%02x (GC0308 = 0x9b)\n", unsigned(s->id.PID));
-    if (s->set_hmirror) s->set_hmirror(s, CAM_HMIRROR ? 1 : 0);
-    if (s->set_vflip) s->set_vflip(s, CAM_VFLIP ? 1 : 0);
-    if (s->set_ae_level) s->set_ae_level(s, AE_LEVEL);              // UNVERIFIED on hardware: white paper fools auto-exposure into grey; tune AE_LEVEL (system-design 5.5)
+    if (s->set_hmirror) s->set_hmirror(s, CAM_HMIRROR ? 1 : 0);      // reg 0x14 bit 0 (gc0308.c, Linux, Allwinner agree)
+    if (s->set_vflip) s->set_vflip(s, CAM_VFLIP ? 1 : 0);            // reg 0x14 bit 1
+    // CONFIRMED: implemented (AEC target 0xd3 = 0x48 + 8 * level; +1 = 0x50, the Allwinner driver's EV+1 value). How much +1 helps
+    // white paper is a tuning question: AE_LEVEL in shared/constants.json.
+    if (s->set_ae_level) s->set_ae_level(s, AE_LEVEL);
   }
   front = -1;
   inited = true;
@@ -175,10 +224,15 @@ void Camera::Impl::doGrab() {
 void Camera::Impl::applyLock(bool lock) {
   sensor_t* s = esp_camera_sensor_get();
   if (!s) return;
-  const int on = lock ? 0 : 1;                                       // UNVERIFIED on hardware: whether the GC0308 driver implements all three (the null checks keep it safe)
-  if (s->set_exposure_ctrl) s->set_exposure_ctrl(s, on);
-  if (s->set_whitebal) s->set_whitebal(s, on);
-  if (s->set_gain_ctrl) s->set_gain_ctrl(s, on);
+  // CORRECTED: esp32-camera's GC0308 set_exposure_ctrl / set_gain_ctrl flip bits 0 / 2 of reg 0x22, which no other GC0308 driver uses for
+  // AEC / AGC (Linux gc0308.c touches only bit 1 of 0x22; the Allwinner sunxi-vfe gc0308.c: AWB = 0x22 bit 1, auto exposure = 0xd2 bit 7,
+  // auto gain "not supported": the AEC loop sets the gain too). Default 0x22 = 0x57, so clearing bits 0 / 2 would switch off some other
+  // ISP block instead of freezing exposure. So: AWB with set_whitebal (0x22 bit 1, correct) and AEC (exposure + gain) with 0xd2 bit 7.
+  const bool hadBus = busAcquire();
+  const int on = lock ? 0 : 1;
+  if (s->set_whitebal) s->set_whitebal(s, on);                       // also selects register page 0, which the 0xd2 write needs
+  if (s->set_reg) s->set_reg(s, 0xd2, 0x80, on ? 0x80 : 0x00);
+  busRelease(hadBus);
 }
 
 void Camera::Impl::run() {
@@ -204,7 +258,9 @@ void Camera::Impl::run() {
     if (grabState.load() == uint8_t(Grab::Busy)) { doGrab(); continue; }
     camera_fb_t* fb = esp_camera_fb_get();
     if (!fb) {                                                       // the driver timed out: no sensor clock, wiring, ...
-      if (++misses > 20) { Serial.println("[camera] no frames"); shutdown(); state = uint8_t(State::Failed); failedAt = millis(); }
+      // CORRECTED: each esp_camera_fb_get() miss already waited FB_GET_TIMEOUT = 4 s (esp_camera.c), so 20 misses took 80 s. One miss
+      // (4 s without a single frame at ~15 fps) is a dead camera: Failed shows the "No camera found" panel; the lease retries every 3 s.
+      if (++misses >= 1) { Serial.println("[camera] no frames for 4 s"); shutdown(); state = uint8_t(State::Failed); failedAt = millis(); }
       vTaskDelay(pdMS_TO_TICKS(10));
       continue;
     }
@@ -223,7 +279,7 @@ bool Camera::begin() {
   if (!p_) {
     p_ = new Impl();
     p_->mtx = xSemaphoreCreateMutex();
-    xTaskCreatePinnedToCore(Impl::trampoline, "camera", 6144, p_, 2, &p_->task, 0);   // UNVERIFIED on hardware: priority 2 on core 0 (the game loop runs on core 1)
+    xTaskCreatePinnedToCore(Impl::trampoline, "camera", 6144, p_, 2, &p_->task, 0);   // UNVERIFIED on hardware (performance only): priority 2 on core 0 with the driver's own cam_task (CONFIG_CAMERA_CORE0) and the vision task; the game loop runs on core 1
     if (!p_->task || !p_->mtx) { Serial.println("[camera] could not create the task"); return false; }
   }
   p_->leaseAt = millis();
@@ -232,7 +288,14 @@ bool Camera::begin() {
 }
 void Camera::end() { if (p_ && p_->want.exchange(false)) xTaskNotifyGive(p_->task); }
 void Camera::update(uint32_t nowMs) {
-  if (p_ && p_->want.load() && nowMs - p_->leaseAt.load() > uint32_t(CAMERA_IDLE_MS)) end();
+  if (!p_) return;
+  uint8_t asked = 1;
+  if (p_->bus.compare_exchange_strong(asked, 2)) {                  // the camera task wants the I2C bus: park here (no M5.update() meanwhile)
+    const uint32_t t0 = millis();
+    while (p_->bus.load() == 2 && millis() - t0 < BUS_PARK_MAX_MS) vTaskDelay(1);
+    p_->bus = 0;
+  }
+  if (p_->want.load() && nowMs - p_->leaseAt.load() > uint32_t(CAMERA_IDLE_MS)) end();
 }
 Camera::State Camera::state() const { return p_ ? State(p_->state.load()) : State::Off; }
 uint32_t Camera::frameNo() const { return p_ ? p_->frameNo.load() : 0; }
