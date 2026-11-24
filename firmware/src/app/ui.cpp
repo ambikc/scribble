@@ -280,7 +280,8 @@ void UI::draw(Renderer& r, uint32_t nowMs) {
         r.g().fillRect(b.x, b.y, 3, b.h, PAL_INK); r.g().fillRect(b.x + b.w - 3, b.y, 3, b.h, PAL_INK);
       }
       if (down) r.fillRectA(b.x, b.y, b.w, b.h, 0x0000, 31);
-      if (b.pulse) r.fillRectA(b.x, b.y, b.w, b.h, PAL_WHITE, uint8_t(255 * (0.15f + 0.15f * std::sin(nowMs / 160.0f))));
+      // (nowMs % 1005): one period of sin(ms / 160) is 1005 ms; a float of the raw ms count gets steppy after hours
+      if (b.pulse) r.fillRectA(b.x, b.y, b.w, b.h, PAL_WHITE, uint8_t(255 * (0.15f + 0.15f * std::sin(float(nowMs % 1005u) / 160.0f))));
       glyph(r, b, b.x, b.y, hold, b.iconSize ? b.iconSize : 30);
     } else if (b.kind == BtnKind::Chip) {
       const int y = b.y + (down ? 1 : 0);

@@ -17,6 +17,18 @@ float frand() {                           // cheap xorshift in [0, 1): particles
   rngState ^= rngState << 13; rngState ^= rngState >> 17; rngState ^= rngState << 5;
   return (rngState >> 8) * (1.0f / 16777216.0f);
 }
+/** Would a ball placed at (x, y) be stuck (the physics respawns it at once because it cannot push it out or unstick it)? Runs a
+ *  few physics ticks on a scratch World; the level's start fields are borrowed for it and restored. */
+bool ballStuckAt(Level& l, int x, int y) {
+  const int32_t sx = l.startX, sy = l.startY;
+  l.startX = x; l.startY = y;
+  World w; newWorld(w, l);
+  const StepInput in{0.0, false};
+  bool stuck = false;
+  for (int i = 0; i < 3 && !stuck; i++) stuck = (physicsStep(w, l, in) & EV_RESPAWN) != 0;
+  l.startX = sx; l.startY = sy;
+  return stuck;
+}
 }  // namespace
 
 // =====================================================================================================================
@@ -53,6 +65,9 @@ void Game::go(Screen s) {
 }
 
 void Game::say(const char* text) {
+#ifdef EMU
+  std::printf("[toast %s]\n", text);   // emulator only: scripts grep it
+#endif
   std::strncpy(toast.text, text, sizeof toast.text - 1);
   toast.text[sizeof toast.text - 1] = 0;
   toast.t = 2.2f;
@@ -175,8 +190,15 @@ void Game::drawParts() {
 // =====================================================================================================================
 // saving and opening
 // =====================================================================================================================
+namespace { constexpr uint32_t SAVE_FAIL_TOAST_MS = 30000; }
+
 void Game::saveCurrent() {
-  if (dirtySave) { store.save(slot, level); dirtySave = false; }
+  if (!dirtySave) return;
+  if (store.save(slot, level)) { dirtySave = false; return; }
+  // The write failed (full or failing flash): the old file is intact and the store's in-memory copy follows the level. Keep the
+  // level dirty so the autosave tries again, but not every tick: Draw's autosave waits AUTOSAVE_IDLE_S after lastEditAt.
+  lastEditAt = nowMs;
+  if (!saveFailSaid || nowMs - saveFailSaidAt >= SAVE_FAIL_TOAST_MS) { say("Could not save"); saveFailSaid = true; saveFailSaidAt = nowMs; }
 }
 void Game::markEdited() { dirtySave = true; lastEditAt = nowMs; r.dirty(); }
 
@@ -200,6 +222,14 @@ void Game::newInSlot(int slotIndex) {
 }
 
 void Game::startPlay() {
+  // Never start with a buried pin: a stroke over the Start ball (or the Flag) leaves the ball inside the ground, where the physics
+  // cannot unstick it and respawns it every tick (no ball, a bloop 60 times a second). For a buried pin, clear the same hole the
+  // Draw screen clears when a pin is dropped (editing.h pinDrop) and keep the repaired level. A pin that is only resting on the
+  // ground is left alone (an unconditional hole would dent the floor under the ball).
+  bool fixed = false;
+  if (ballStuckAt(level, level.startX, level.startY)) { pinDrop(level, Pin::Start); fixed = true; }
+  if (ballStuckAt(level, level.flagX, level.flagY - FLAG_CENTER_DY)) { pinDrop(level, Pin::Flag); fixed = true; }
+  if (fixed) { markEdited(); saveCurrent(); }
   newWorld(play.world, level);
   nParts = 0;
   play.winT = 0; play.spawnRing = 0.2f; play.tiltHint = play.everPlayed ? 0.0f : 3.0f; play.everPlayed = true;
@@ -224,7 +254,8 @@ void Game::goBack() {
 // the 60 Hz tick and the frame
 // =====================================================================================================================
 void Game::tick(const InputState& in) {
-  nowMs = millis(); t += DT; screenT += DT;
+  nowMs = millis(); screenT += DT;
+  t += DT; if (t >= T_WRAP) t -= T_WRAP;
   ui.begin();
   switch (screen) {
     case Screen::Title: tickTitle(in); break;

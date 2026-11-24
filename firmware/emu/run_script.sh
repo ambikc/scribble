@@ -7,6 +7,7 @@
 #   # start: play            EMU_START (title|picker|chooser|standup|check|countdown|processing|review|play|draw|win|menu)
 #   # slot: 3                EMU_SLOT
 #   # levels: 3=bridge 4=hop test levels written into the folder (emu/mk_level.py) after the three lessons were created
+#   # mkdir: slot5.tmp/x     directories created in the folder after that (e.g. a directory in the way of slot 5's temp file: saves fail)
 #   # expect: [win slot 3]   a fixed string that must appear in the output (several allowed)
 #   # expect-not: [sfx jump] a fixed string that must NOT appear
 #   # expect-count: 2 [sfx pop]   the string must appear exactly that many times
@@ -28,6 +29,7 @@ printf '10 quit\n' > "$out/boot.txt"
 EMU_FS="$out/fs" EMU_SCRIPT="$out/boot.txt" SDL_VIDEODRIVER=dummy "$prog" > /dev/null 2>&1
 levels=$(get levels)
 if [ -n "$levels" ]; then python3 "$here/mk_level.py" "$out/fs" $levels || exit 2; fi
+for d in $(get mkdir); do mkdir -p "$out/fs/$d"; done
 
 sed -E "s#^([0-9]+ shot )OUT/#\1$out/#" "$script" > "$out/script.txt"
 start=$(get start); slot=$(get slot)
