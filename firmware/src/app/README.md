@@ -5,7 +5,7 @@ For the people (and agents) who write `game_<screen>.cpp`. Everything here is ve
 implementation of every screen is `sim/src/modes.ts`.
 
 ```text
- Game::tick(in)   once per 60 Hz tick      nowMs, screenT, t advance; ui.begin(); your tickX(in); updateFx
+ Game::tick(in)   once per 60 Hz tick      nowMs, screenT, t (a double, wraps every hour) advance; ui.begin(); your tickX(in); updateFx
  Game::draw()     once per frame           your drawX(); particles; shutter flash; paper fade; toast
  main()           r.present() afterwards   pushes the 320 x 240 sprite to the display (the shake offset is applied there)
 ```
@@ -92,8 +92,8 @@ pointer is not stable), react. Buttons are rebuilt every tick; pressed/hold stat
 | `cycleSound()`, `soundIcon()` | sound chip: cycles Off/Low/Med, saves settings, picks the icon |
 | `openLevel(slot, play)` | load slot into `level` (blank if empty), remember it as last slot, then `startPlay()` or `go(Draw)` |
 | `newInSlot(slot)` | save a blank level there, open it in Draw, toast "New level" |
-| `startPlay()` | new `World` from `level`, clear particles, `play.winT/spawnRing/tiltHint`, `go(Play)` |
-| `markEdited()` / `saveCurrent()` | set the autosave flag (`dirtySave`, `lastEditAt`) / write the level if flagged |
+| `startPlay()` | clears the pin-drop hole around a buried Start/Flag (and saves), new `World` from `level`, clear particles, `play.winT/spawnRing/tiltHint`, `go(Play)` |
+| `markEdited()` / `saveCurrent()` | set the autosave flag (`dirtySave`, `lastEditAt`) / write the level if flagged; a failed write keeps the flag (retried after the next idle period) and toasts "Could not save" at most every 30 s |
 | `leaveCamera()` | back out of the paper flow to the Chooser or the Title (`cameFrom`) |
 | `playFxStep(dt)` | weak: decays the `PlayState` fx timers every tick; the Play agent may define a strong one |
 
