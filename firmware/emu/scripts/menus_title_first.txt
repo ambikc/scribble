@@ -1,0 +1,10 @@
+# First launch: Title -> Play opens the starter Bridge in DRAW (ghost finger after 3 s); after Draw's own Play button the Title's Play opens Play.
+# Run by emu/run_menus_tests.sh on an EMU_FS whose settings.json says firstRunDone:false. Expected flow: title>draw>play>menu>title>play
+100 tap 196 216
+1000 shot /tmp/scribble_menus/first_noghost.ppm
+3600 shot /tmp/scribble_menus/first_ghost.ppm
+4200 tap 294 216
+5000 tap 296 24
+5600 tap 256 176
+6400 tap 196 216
+7000 quit

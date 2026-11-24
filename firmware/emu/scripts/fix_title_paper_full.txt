@@ -1,0 +1,8 @@
+# All 10 slots full: the Title's paper tile goes to the Picker with the toast, never into the camera flow.
+# start: title
+# levels: 3=bridge 4=bridge 5=bridge 6=bridge 7=bridge 8=bridge 9=bridge
+# expect: [screen picker]
+# expect-not: [screen standup]
+# expect-not: [screen check]
+300 tap 112 216
+1000 quit

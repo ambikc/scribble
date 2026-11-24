@@ -1,0 +1,17 @@
+# Regression: the Win buttons are dead for the first 0.6 s and for a touch that began before (or during) that time, so a child still
+# mashing Jump does not skip the Win screen. Only the tap at 1.1 s (the pencil) does anything; the earlier ones are on
+# Play again / New, whose log lines must not appear.
+# run: emu/run_script.sh emu/scripts/fix_win_lockout.txt
+# start: win
+# slot: 0
+# expect-count: 1 [win button edit]
+# expect-count: 1 [win button
+# expect-not: [win button again]
+# expect-not: [win button new]
+20 down 160 215
+400 up
+450 tap 270 215
+560 down 160 215
+900 up
+1100 tap 50 215
+1600 quit

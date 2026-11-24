@@ -1,0 +1,5 @@
+# Title with all ten slots full: the paper tile goes to the Picker, the Draw tile too (and nothing is created). Run by emu/run_menus_tests.sh.
+100 tap 112 216
+600 key back
+900 tap 280 216
+1400 quit
