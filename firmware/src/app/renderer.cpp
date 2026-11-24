@@ -1,5 +1,6 @@
 // renderer.cpp - the 320 x 240 frame sprite and everything drawn into it.   Port of sim/src/renderer.ts.
 #include "renderer.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -371,8 +372,18 @@ void Renderer::flash(uint16_t color, float alpha) {
   if (alpha <= 0) return;
   if (alpha > 1) alpha = 1;
   const int a = int(alpha * 255 + 0.5f);
+  const uint32_t k = uint32_t(a + 1) >> 3;                         // mix565's weight, 0..32
+  if (k == 0) return;                                              // alpha below ~1/32: mix565 leaves every pixel as it is
   const uint16_t s = sw16(color);
-  for (int i = 0; i < SW * SH; i++) fb_[i] = a >= 255 ? s : sw16(mix565(sw16(fb_[i]), color, a));
+  if (a >= 255) { std::fill(fb_, fb_ + SW * SH, s); return; }      // opaque: a plain fill
+  // the same blend as mix565, with the source half hoisted out of the loop (77 k pixels)
+  const uint32_t Sk = ((color | (uint32_t(color) << 16)) & 0x07E0F81Fu) * k, inv = 32 - k;
+  for (int i = 0; i < SW * SH; i++) {
+    const uint16_t d = sw16(fb_[i]);
+    uint32_t R = (Sk + ((d | (uint32_t(d) << 16)) & 0x07E0F81Fu) * inv) >> 5;
+    R &= 0x07E0F81Fu;
+    fb_[i] = sw16(uint16_t(R | (R >> 16)));
+  }
 }
 void Renderer::dim(float alpha) { flash(PAL_INK, alpha); }
 
