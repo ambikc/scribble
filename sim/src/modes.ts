@@ -44,7 +44,7 @@ export class Game {
   private lc: LiveCheck | null = null; private lcVersion = -1; private lcAt = 0; private greenFor = 0; private debugNums = false;
   private cd = { t: 0, said: [false, false, false, false], snapped: false };
   private snapFrame: Uint16Array | null = null;
-  private review: { res: VisionResult; params: VisionParams; reveal: number; busy: boolean } | null = null;
+  private review: { res: VisionResult; params: VisionParams; reveal: number; busy: boolean; start?: [number, number]; flag?: [number, number] } | null = null;   // start / flag: where the child dropped a pin
   private procToken = 0;
   private toast = { text: '', t: 0 };
   /** The page shows the vision stages in a debug panel; it hooks in here. */
@@ -378,12 +378,18 @@ export class Game {
       { id: 'more', w: 64, icon: 'inkMore', iconSize: 30 }, { id: 'good', w: 128, icon: 'check', fill: P.GREEN, iconSize: 38 },
     ]);
     const hit = this.ui.update(inp);
+    const dragged = this.pinDrag;
     this.dragPins(inp, rv.res.level, false);
+    if (dragged && !this.pinDrag) { const l = rv.res.level; if (dragged === 'start') rv.start = [l.startX, l.startY]; else rv.flag = [l.flagX, l.flagY]; }
     if (hit === 'back' || hit === 'retake') { this.go('check'); }
     else if ((hit === 'less' || hit === 'more') && !rv.busy) {
       rv.busy = true; const step = hit === 'less' ? C.INK_STEP : -C.INK_STEP;
       rv.params = { ...rv.params, inkThresh: Math.max(38, Math.min(128, rv.params.inkThresh + step)) };
-      void this.cam.rethreshold(rv.res.work, rv.params).then((res) => { rv.res = res; rv.busy = false; rv.reveal = 1; this.audio.play('tick'); this.onVision?.(res); });
+      void this.cam.rethreshold(rv.res.work, rv.params).then((res) => {
+        const l = res.level;                                                                             // the new level, but the moved pins stay put
+        if (rv.start) { [l.startX, l.startY] = rv.start; clearAround(l, l.startX, l.startY, C.START_SAFE_RADIUS); }
+        if (rv.flag) { [l.flagX, l.flagY] = rv.flag; clearAround(l, l.flagX, l.flagY - C.FLAG_CENTER_DY, C.FLAG_SAFE_RADIUS); }
+        rv.res = res; rv.busy = false; rv.reveal = 1; this.audio.play('tick'); this.onVision?.(res); });
     } else if (hit === 'good') this.acceptReview();
   }
   private acceptReview(): void {
