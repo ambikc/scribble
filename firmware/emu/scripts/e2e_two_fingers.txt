@@ -1,0 +1,17 @@
+# A second finger ends the touch: Draw a short stroke, put a second finger down far away, lift the first, move the second, lift it.
+# Only the short stroke may be painted: the saved level must equal the one of a plain 60,60 -> 100,60 stroke (crc 8E67BBC2).
+# Before the fix, when the first finger lifted, M5.Touch.getDetail(0) became the second finger and the stroke ran on to it.
+# start: draw
+# slot: 5
+# expect: [level crc 8E67BBC2]
+# expect-count: 1 [level crc
+100 down 60 60
+120 move 80 60
+140 move 100 60
+200 down2 250 150
+260 up
+300 move2 200 120
+340 move2 150 100
+400 up2
+500 shot OUT/two_fingers.ppm
+8000 quit

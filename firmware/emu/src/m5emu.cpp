@@ -17,8 +17,10 @@ struct Cmd { double t; std::string op; std::string a; int x = 0, y = 0; float v 
 std::vector<Cmd> script;
 bool haveScript = false, quit = false;
 double vclockMs = 0;                       // virtual time, ms
-bool scriptDown = false; int scriptX = 0, scriptY = 0; float scriptTilt = 0;
-bool prevDown = false, uKeyWas = false;
+struct Finger { bool down = false; int x = 0, y = 0; };
+Finger finger[m5::EmuTouch::FINGERS];      // script fingers: 0 = down/move/up, 1 = down2/move2/up2
+float scriptTilt = 0;
+bool uKeyWas = false;
 bool uprightOn = false;                    // the IMU reports "standing on its base" instead of "flat on the table"
 bool scriptKeyJump = false, scriptKeyBack = false;
 std::string photoNameStr;                  // the test photo the emulated camera serves (script command `photo <name>`); empty = the camera's own default
@@ -38,10 +40,10 @@ void loadScript() {
   while (std::fgets(line, sizeof line, f)) {
     if (line[0] == '#' || line[0] == '\n') continue;
     Cmd c; char op[64] = "", a[400] = "";
-    // forms:  <ms> tap x y | down x y | move x y | up | tilt g | upright 0|1 | key jump|back | keydown K | keyup K | shot file | log text | quit
+    // forms:  <ms> tap x y | down x y | move x y | up | down2 x y | move2 x y | up2 | tilt g | upright 0|1 | key jump|back | keydown K | keyup K | shot file | log text | quit
     if (std::sscanf(line, "%lf %63s", &c.t, op) < 2) continue;
     c.op = op;
-    if (c.op == "tap" || c.op == "down" || c.op == "move") std::sscanf(line, "%*f %*s %d %d", &c.x, &c.y);
+    if (c.op == "tap" || c.op == "down" || c.op == "move" || c.op == "down2" || c.op == "move2") std::sscanf(line, "%*f %*s %d %d", &c.x, &c.y);
     else if (c.op == "tilt" || c.op == "upright") std::sscanf(line, "%*f %*s %f", &c.v);
     else if (c.op == "shot" || c.op == "log" || c.op == "key" || c.op == "keydown" || c.op == "keyup" || c.op == "photo") { std::sscanf(line, "%*f %*s %399s", a); c.a = a; }
     script.push_back(c);
@@ -63,9 +65,9 @@ void runScript() {
   for (auto& c : script) {
     if (c.fired || c.t > vclockMs) continue;
     c.fired = true;
-    if (c.op == "down") { scriptDown = true; scriptX = c.x; scriptY = c.y; }
-    else if (c.op == "move") { scriptX = c.x; scriptY = c.y; }
-    else if (c.op == "up") scriptDown = false;
+    if (c.op == "down" || c.op == "down2") { Finger& f = finger[c.op == "down2"]; f.down = true; f.x = c.x; f.y = c.y; }
+    else if (c.op == "move" || c.op == "move2") { Finger& f = finger[c.op == "move2"]; f.x = c.x; f.y = c.y; }
+    else if (c.op == "up" || c.op == "up2") finger[c.op == "up2"].down = false;
     else if (c.op == "tilt") scriptTilt = c.v;
     else if (c.op == "upright") uprightOn = c.v != 0;
     else if (c.op == "keydown" || c.op == "keyup") {
@@ -93,6 +95,11 @@ bool emu::quitRequested() { return quit; }
 bool emu::keyHeld(emu::Key k) {
   if (haveScript) return k == emu::Key::Jump ? scriptKeyJump : scriptKeyBack;
   return k == emu::Key::Jump ? (pinDown(PIN_JUMP) || pinDown(PIN_UP)) : pinDown(PIN_BACK);
+}
+
+void emu::setFinger(int id, bool down, int x, int y) {
+  if (id < 0 || id >= m5::EmuTouch::FINGERS) return;
+  finger[id].down = down; if (down) { finger[id].x = x; finger[id].y = y; }
 }
 
 const char* emu::fsRoot() {
@@ -153,12 +160,20 @@ void m5::M5Class::update() {
   ++frame;
   if (haveScript) { vclockMs += FRAME_MS; runScript(); }
   else { const bool u = pinDown(PIN_UPRIGHT); if (u && !uKeyWas) uprightOn = !uprightOn; uKeyWas = u; }
-  touch_detail_t d;
-  int tx = 0, ty = 0; bool down = false;
-  if (haveScript) { down = scriptDown; tx = scriptX; ty = scriptY; }
-  else { lgfx::touch_point_t tp; down = Display.getTouch(&tp) > 0; tx = tp.x; ty = tp.y; }
-  d.down = down; d.x = tx; d.y = ty;
-  d.pressed = down && !prevDown; d.released = !down && prevDown;
-  prevDown = down;
-  Touch.d = d;
+  if (!haveScript) {                                   // interactive: the mouse is finger 0
+    lgfx::touch_point_t tp; const bool down = Display.getTouch(&tp) > 0;
+    finger[0].down = down; if (down) { finger[0].x = tp.x; finger[0].y = tp.y; }
+  }
+  // like Touch_Class::update(): one detail per finger id, raw slots = the fingers that are down (in id order), the count includes a
+  // finger released in this update
+  int raw = 0, released = 0;
+  for (int id = 0; id < EmuTouch::FINGERS; id++) {
+    touch_detail_t& d = Touch.det[id];
+    const bool was = d.down, down = finger[id].down;
+    d.id = uint16_t(id); d.down = down;
+    if (down) { d.x = finger[id].x; d.y = finger[id].y; Touch.raw[raw++] = uint16_t(id); }
+    d.pressed = down && !was; d.released = !down && was;
+    if (d.released) ++released;
+  }
+  Touch.count = raw + released;
 }

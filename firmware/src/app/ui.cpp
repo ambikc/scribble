@@ -220,7 +220,7 @@ const char* UI::update(const InputState& in) {
   const char* out = nullptr;
   if (t.pressed) {
     const Btn* b = find(t.x, t.y);
-    havePressed_ = b != nullptr; fired_ = false; holdFrac_ = 0; touchOnButton = b != nullptr;
+    havePressed_ = b != nullptr; fired_ = false; holdFrac_ = 0; touchStartedOnButton = touchOnButton = b != nullptr;
     if (b) {
       pressedCopy_ = *b;
       std::strncpy(pressedId_, b->id, sizeof pressedId_ - 1); pressedId_[sizeof pressedId_ - 1] = 0;
@@ -241,9 +241,9 @@ const char* UI::update(const InputState& in) {
       const Btn* o = find(t.x, t.y);
       if (o && std::strcmp(o->id, pressedCopy_.id) == 0) out = pressedCopy_.id;
     }
-    havePressed_ = false; pressedId_[0] = 0; holdFrac_ = 0; touchOnButton = false;
+    havePressed_ = false; pressedId_[0] = 0; holdFrac_ = 0;   // touchOnButton stays valid for the rest of this tick (the screen reads it next)
   }
-  if (!t.down && !t.released && !t.pressed) { havePressed_ = false; pressedId_[0] = 0; holdFrac_ = 0; }
+  if (!t.down && !t.released && !t.pressed) { havePressed_ = false; pressedId_[0] = 0; holdFrac_ = 0; touchOnButton = false; }
   return out;
 }
 

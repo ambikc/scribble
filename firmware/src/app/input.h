@@ -1,6 +1,7 @@
 // input.h - touch + tilt, one InputState per 60 Hz tick.   Port of sim/src/input.ts.   (platform adapter: M5Unified)
 //
-//   touch : ONE finger (single touch). Edges (pressed / released) are LATCHED until consumeEdges() so a tap is never
+//   touch : ONE finger (single touch). A second finger ENDS the touch (a release edge at the first finger's last point) and the
+//           screen is ignored until every finger is up, so two fingers never draw one long line or fire a button twice. Edges (pressed / released) are LATCHED until consumeEdges() so a tap is never
 //           lost on a loop pass that happens to run no tick (docs/system-design.md 6.1).
 //   tilt  : BMI270 accelerometer -> -1..1 with dead-zone, linear to TILT_FULL, low-pass (same maths as input.ts).
 //           Which axis / sign rolls the ball is set by TILT_AXIS / TILT_SIGN below (measure with the hardware-check app).
@@ -45,6 +46,8 @@ class Input {
   const float* rawAccel() const { return acc_; }
  private:
   bool down_ = false, pressedEdge_ = false, releasedEdge_ = false;
+  bool blocked_ = false;           // a second finger ended the touch: ignore the screen until every finger is up
+  int touchId_ = -1;               // the controller's id of the finger that started the current touch
   int x_ = 0, y_ = 0, sx_ = 0, sy_ = 0; uint32_t downAt_ = 0;
   float acc_[3] = {0, 0, 0};
   TiltFilter tilt_;                // dead-zone + low-pass, stepped once per tick (lib/core/src/tilt.h)

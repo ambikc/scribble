@@ -5,7 +5,9 @@
 // drawing call, sprite and font behaves like the device. What is emulated here:
 //
 //   M5.Display   M5GFX over SDL, 320 x 240 (a window; under xvfb or SDL_VIDEODRIVER=dummy it is headless)
-//   M5.Touch     the mouse (left button = one finger)           | script: tap/down/move/up
+//   M5.Touch     the mouse (left button = one finger)           | script: tap/down/move/up; a SECOND finger: down2/move2/up2
+//                (getCount() counts both, and getDetail(0) follows the first raw slot like the real library: when finger 1
+//                lifts while finger 2 stays, getDetail(0) becomes finger 2, with its own id)
 //   M5.Imu       arrow keys LEFT/RIGHT (or A/D) = tilt right/left edge down (+/- TILT_FULL g) | script: tilt <g>
 //                reports "flat on the table" (az = +0.97 g); key U or script `upright 1` = "standing on its base" (ay = -0.98 g)
 //   M5.Speaker   tone() is printed as "[tone <Hz> <ms>]", playWav() as "[wav <bytes> bytes]" (no sound)
@@ -53,6 +55,7 @@ extern EmuEsp ESP;
 namespace m5 {
 struct touch_detail_t {
   int x = 0, y = 0;
+  uint16_t id = 0;                               // like m5gfx::touch_point_t::id: which finger (the controller's touch id)
   bool down = false, pressed = false, released = false;
   bool isPressed() const { return down; }
   bool wasPressed() const { return pressed; }
@@ -60,7 +63,17 @@ struct touch_detail_t {
   bool isReleased() const { return !down; }
 };
 
-struct EmuTouch { touch_detail_t d; touch_detail_t getDetail(size_t = 0) const { return d; } int getCount() const { return d.down ? 1 : 0; } };
+// Like M5Unified's Touch_Class: one detail per finger id; getDetail(i) is the detail of the finger in RAW slot i (raw slots hold the
+// fingers that are down, in id order; slots past the count keep their old ids, as the real buffer does); getCount() counts the fingers
+// that are down plus the ones released in this update.
+struct EmuTouch {
+  static constexpr int FINGERS = 2;
+  touch_detail_t det[FINGERS];
+  uint16_t raw[FINGERS] = {0, 0};
+  int count = 0;
+  const touch_detail_t& getDetail(size_t index = 0) const { const uint16_t id = raw[index < FINGERS ? index : 0]; return det[id < FINGERS ? id : 0]; }
+  int getCount() const { return count; }
+};
 
 struct imu_3d_t { float x = 0, y = 0, z = 0; };
 struct imu_data_t { imu_3d_t accel, gyro; };
@@ -115,4 +128,7 @@ bool keyHeld(Key k);
 
 /** The directory the game uses as its "LittleFS": env EMU_FS, or ./emu_fs; created when missing. No trailing slash. */
 const char* fsRoot();
+
+/** Test hook (emu/unit): put finger `id` (0 or 1) down at (x, y) or lift it; the next M5.update() reports it. Script runs only. */
+void setFinger(int id, bool down, int x = 0, int y = 0);
 }

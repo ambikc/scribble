@@ -66,8 +66,11 @@ pointer is not stable), react. Buttons are rebuilt every tick; pressed/hold stat
   (`ui.holdFor(id)` is 0..1 for Custom buttons). `longId` + `longMs`: a long press fires `longId` *instead of* `id`.
   `onPress`: fires on touch-down (the Jump pad). Sliding off a button before release fires nothing.
 * A touch within `HIT_FORGIVE` (6 px) of a button, and not inside another, still hits the nearest one.
-* `ui.touchOnButton` is true while the current touch began on a button: **a screen that also treats touches as strokes or jumps
-  must ignore a touch that began on a button.**
+* `ui.touchOnButton` is true while the current touch began on a button, including the tick of its release (so a press and release
+  that land in the same tick still count): **a screen that also treats touches as strokes or jumps must ignore a touch that began
+  on a button** (`t.pressed && !ui.touchOnButton`). `ui.touchStartedOnButton` is the same flag but keeps describing the last touch
+  until the next press.
+* Touch is one finger: a second finger ends the touch (a release edge) and the screen is ignored until every finger is up.
 * Helpers in Game: `chip(id, icon, x, extra)`, `chipBack()`, `chipMenu()` (back top-left, menu top-right),
   `bar(items, widths, n)` (tabs along the bottom bar; widths add up to 320), `topBar(titleIcon, rightId, rightIcon, rightActive)`
   (list screens). `extra` is an optional `Btn` carrying `fill/active/holdMs/longId/longMs/iconSize`; id, position and size are set for you.
