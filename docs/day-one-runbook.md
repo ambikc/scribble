@@ -9,16 +9,7 @@ How to read it: every step has **Do**, **Success** and **If not**. A line marked
 without the device (or without the real tools on the machine that wrote this). Do the steps in order; each one makes the next
 one safer. Budget: about 3 hours with a break, plus one longer session for the camera.
 
-| Part | What | Roughly |
-|---|---|---|
-| 0 | Table, tools, PC sanity check | 30 min |
-| 1 | Hardware-check app: screen, touch, tilt, speaker | 40 min |
-| 2 | Flash the game, smoke test every screen | 20 min |
-| 3 | Power-cut test of saving | 30 min |
-| 4 | Camera bring-up | 60 min |
-| 5 | Timing the vision | 15 min |
-| 6 | Troubleshooting table (use when stuck) | |
-| 7 | What to send back | 15 min |
+Parts: 0 tools and a PC sanity check (30 min), 1 hardware-check app (40), 2 the game and a smoke test (20), 3 power-cut test (30), 4 camera bring-up (60), 5 timing the vision (15), 6 troubleshooting, 7 what to send back (15).
 
 ---
 
@@ -27,12 +18,12 @@ one safer. Budget: about 3 hours with a break, plus one longer session for the c
 ### On the table
 
 * The CoreS3 and a **USB-C cable that carries data**. Many cables are charge-only; if no serial port ever appears, swap the cable first.
-* A **stand** for the device (its base, or a small phone stand). The camera looks out of the back-facing side of the stand-up position, so it must stand upright.
+* A **stand** for the device (its base, or a small phone stand): paper mode needs it standing upright, screen towards you, camera looking at the sheet.
 * The **printed template**: [assets/scribble-run-level-template-a4.pdf](assets/scribble-run-level-template-a4.pdf), printed at **100 % / Actual size** on white A4. Measure the printed 10 cm line with a ruler; it must read 10.0 cm +-1 mm, or every distance number later is wrong.
 * A **ruler or tape measure** (distances 30-50 cm), a **fat black marker or crayon**, a **red** and a **blue** one, a **desk lamp**.
 * A phone for photos of the screen (several steps ask for them).
 * A microSD card is **optional and not used yet**: the firmware has no SD code (build-plan: "microSD import/export" is not started).
-* Your son, for the touch and tilt tests. Do the bring-up first; give him the device once parts 1-2 are green.
+* Your son, for the touch and tilt tests (parts 1.3, 1.5, 1.6). Check that the device works before you hand it to him.
 
 ### Install PlatformIO and get the code
 
@@ -41,12 +32,11 @@ pip install platformio
 ```
 
 ```bash
-git clone https://github.com/<your-account>/scribble.git && cd scribble/firmware
+git clone https://github.com/ambikc/scribble.git && cd scribble/firmware
 ```
 
-(Use the real clone URL of this repository. Every command below is run from the `firmware/` folder.) The first `pio run`
-downloads the ESP32 toolchain and libraries (a few hundred MB, a few minutes). `pio` must be on your PATH; if it is not,
-use `python -m platformio` instead of `pio`.
+Every command below is run from the `firmware/` folder. The first `pio run` downloads the ESP32 toolchain and libraries (a few
+hundred MB, a few minutes). If `pio` is not on your PATH, use `python -m platformio`.
 
 ### USB serial: which port, per operating system
 
@@ -76,13 +66,10 @@ If PlatformIO cannot guess the port on upload (the board definition says an uplo
 `pio run -e hwcheck -t upload --upload-port /dev/ttyACM0`, and `pio device monitor --port /dev/ttyACM0`. Use your own port
 name in every command below if autodetection fails.
 
-**Download mode.** Uploads normally reset the board into the bootloader by themselves over USB. If an upload says it cannot
-connect or finds no board: **hold the reset button about 3 seconds until the green LED flashes**, then run the upload
-again. The port number may change in download mode, so run `pio device list` again. After an upload the board restarts and
-the port re-enumerates; `pio device monitor` then needs to be started again.
-
-**Serial gotchas with USB serial.** Messages printed before your monitor connects are lost. To see boot messages, open the
-monitor first, then tap the reset button once. The baud rate (115200) is ignored by USB serial and harmless.
+**Download mode.** Uploads normally reset the board into the bootloader by themselves over USB. If an upload cannot connect:
+**hold the reset button about 3 seconds until the green LED flashes**, then upload again (the port number may change: run
+`pio device list` again). After an upload the board restarts and the port re-enumerates, so restart `pio device monitor`.
+Messages printed before the monitor connects are lost: to see boot messages open the monitor first, then tap reset once.
 
 ### A sanity check with no hardware
 
@@ -101,14 +88,12 @@ pio run -e hwcheck && pio run -e cores3
 
 **Success:** both end with `SUCCESS` (hwcheck: RAM 15.9 %, flash 17.9 %; the game is larger). These are the two firmware images you will flash.
 
-Optional, to know what the game *should* look like: the PC emulator (needs SDL2: `sudo apt-get install -y libsdl2-dev`, macOS `brew install sdl2`).
+Optional, to see what the game *should* look like: the PC emulator (needs SDL2: `sudo apt-get install -y libsdl2-dev`, macOS `brew install sdl2`).
+A window opens (mouse = finger, arrow keys = tilt, Space = jump); details in [firmware/emu/README.md](../firmware/emu/README.md).
 
 ```bash
 pio run -e emu && .pio/build/emu/program
 ```
-
-A window opens (mouse = finger, arrow keys = tilt, Space = jump). Compare it later with
-[assets/firmware-emulator-screens.png](assets/firmware-emulator-screens.png). Details: [firmware/emu/README.md](../firmware/emu/README.md).
 
 ---
 
@@ -126,10 +111,9 @@ pio run -e hwcheck -t upload
 pio device monitor
 ```
 
-(`pio device monitor` is also available as `pio run -e hwcheck -t upload -t monitor` in one go, *unverified*.) Leave the
-monitor open for the whole of part 1: **every page prints its numbers there**, ready to copy into
+Leave the monitor open for the whole of part 1: **every page except INFO prints its numbers there**, ready to copy into
 [hardware-notes.md](hardware-notes.md). To see the first line (`Scribble Run hardware check. display 320 x 240. Pages: ...`),
-tap reset once with the monitor open.
+tap reset once with the monitor open. (`pio run -e hwcheck -t upload -t monitor` does both in one go; *unverified*.)
 
 **Success:** the screen shows "Hardware check" with nine coloured squares; the monitor shows the banner line above.
 **If not:** see the troubleshooting table in part 6 (no port, blank screen, boot loop).
@@ -142,7 +126,7 @@ order: INFO, TOUCH, SPEED, TILT, BALL, SOUND. Write numbers into the "Measured" 
 
 Fills: *PSRAM size / free*, *Palette looks right*.
 
-* Read the text under the squares: **PSRAM 8192 KB** expected (the INFO page does not print to serial; read it off the screen or photograph it), flash 16 MB, display 320 x 240. The game also prints `PSRAM ... KB, free ... KB` at boot.
+* Read the text under the squares: **PSRAM about 8 MB (8192 KB)** expected (the INFO page does not print to serial; read it off the screen or photograph it), flash 16 MB, display 320 x 240. The game also prints `PSRAM ... KB, free ... KB` at boot.
 * Look at the nine squares (paper, paper dot, ink, red, blue, green, yellow, white, grey). The paper must look **cream, not white**, the ink **near-black**; red and blue must not be swapped (square 4 red, square 5 blue). Photograph it.
 
 **Decisions**
@@ -201,8 +185,7 @@ Hold the device the way he will: **landscape, screen towards you**, like a handh
 
 | Result | Do |
 |---|---|
-| Axis or sign differs from `+x` | Edit `TILT_AXIS` and `TILT_SIGN` in `firmware/src/app/input.h` (lines `constexpr int TILT_AXIS = 0;` x=0 y=1 z=2, and `TILT_SIGN = 1;`). Then rebuild and flash the game (part 2). The hardware-check app's choice is **not saved**; the game constants are the only place it counts. The stand-up detection (`upright`) uses the same axis, so this must be right before the camera work |
-| Rolling axis comes out as **z** | Unexpected (z is the screen normal). Report it rather than editing; the stand-up maths assumes the rolling axis is in the screen plane |
+| Axis or sign differs from `+x` | Edit `TILT_AXIS` and `TILT_SIGN` in `firmware/src/app/input.h` (lines `constexpr int TILT_AXIS = 0;` x=0 y=1 z=2, and `TILT_SIGN = 1;`). Then rebuild and flash the game (part 2). The hardware-check app's choice is **not saved**; the game constants are the only place it counts. The stand-up detection (`upright`) uses the same axis, so this must be right before the camera work. If the rolling axis comes out as **z** (the screen normal), report it instead of editing: the stand-up maths assumes an in-plane axis |
 | Noise at rest above about 0.03 g, or an offset above 0.06 g | The ball will creep. Raise `TILT_DEADZONE` (now 0.06) in `shared/constants.json`, then `node ../tools/gen-config.mjs` and rebuild (CI also regenerates; commit both the JSON and the generated files) |
 | Full scale much later than 24 degrees (feels numb) | Lower `TILT_FULL` (now 0.40 g); much earlier (twitchy): raise it. Same procedure. Tune with him in part 1.6, not by theory |
 
@@ -226,14 +209,10 @@ Fills: *BALL page frame rate*, *Physics time per tick*.
 
 Fills: *Comfortable speaker volume*.
 
-* Tap the **top green box** for the win jingle (C E G C). Tap the **lower box** to step the volume (32, 64, 128, 255; default 64). Find the loudest level that is still comfortable for him in a quiet room, and the one that is comfortable for a car or a living room.
+* Tap the **top green box** for the win jingle (C E G C). Tap the **lower box** to step the volume (it starts at 64, doubles each tap to 128 and 255, then wraps to 32). Find the loudest level that is still comfortable for him in a quiet room, and the one that is comfortable for a car or a living room.
 
 **Decision:** the game's levels are `VOL_LOW = 64` and `VOL_MED = 140` in `src/app/audio.h`. If 64 is already too loud or too faint, report what you chose.
-**If silent:** see part 6.
-
-### 1.8 Write it down
-
-Fill the table in [hardware-notes.md](hardware-notes.md) now, while the numbers are fresh. Do not tidy up the code yet.
+**If silent:** see part 6. Then fill in the whole table in [hardware-notes.md](hardware-notes.md) now, while the numbers are fresh.
 
 ---
 
@@ -269,20 +248,17 @@ screens are almost all icons, no words. The bottom bar of the Title is: **Levels
 
 | # | Do | Expect | Compare with the emulator |
 |---|---|---|---|
-| 1 | Look at the Title for 5 s | Logo wiggles, ball rolls and jumps along the hill to a flag, sound chip (speaker) top-right | first picture of the PNG |
-| 2 | Tap the speaker chip a few times | Icon changes Off / Low / Medium; a beep at Low and Medium | |
+| 1 | Look at the Title for 5 s; tap the speaker chip (top-right) | Logo wiggles, ball rolls and jumps along the hill to a flag; the chip cycles Off / Low / Medium | first picture of the PNG |
 | 3 | Tap **Levels** | Picker: ten cells, **slots 1-3 show the three lessons** with thumbnails, slots 4-10 empty | picker picture |
 | 4 | Tap an **empty** cell (slot 4) | **New-level chooser**: two big cards, yellow Paper (camera) and white **Finger** (pencil) | chooser picture |
 | 5 | Tap **Finger** | **Draw** screen opens on the new level, with the ghost-finger hint on a fresh level | draw picture |
-| 6 | Drag a finger to draw a low wall across the floor (a short vertical stroke near the middle), tap the other materials, undo, eraser | ink appears **under the fingertip**, no gaps even when scribbling; toolbar buttons are hit reliably | |
+| 6 | Draw a low wall across the floor (a short stroke up from the ground, as the emulator script does), try the other materials, undo, eraser | ink appears **under the fingertip**, no gaps even when scribbling; toolbar buttons are hit reliably | |
 | 7 | Tap **Play** (the right end of the bottom toolbar) | **Play**: ball drops onto the ground at the Start pin | |
 | 8 | Tilt right; tap to jump the wall; reach the flag | rolls, jumps, flag wave, **Win** screen with the jingle and three buttons (Edit, Play again, New level) | win picture |
 | 9 | Hold **Restart** or the corner chips (they need a 0.4 s hold) while playing | the hold ring fills, then it acts; a quick tap does nothing | |
 | 10 | Menu chip (top-right in Play) | **Menu**: Resume, Edit, Levels, Restart, Sound, Home | menu picture |
 | 11 | **Levels** | Picker again, slot 4 has your thumbnail; the last-played slot is highlighted; the beaten tick shows | picker picture |
-| 12 | Power cycle (see 3.1 for how) and open Levels | slot 4 and its thumbnail survived | |
-
-Press and hold the sound chip or step through Off/Low/Med if anything is too loud: the setting is saved.
+| 12 | Switch off (hold the power button) and on again; open Levels | slot 4 and its thumbnail survived | |
 
 **Compare** each screen against [assets/firmware-emulator-screens.png](assets/firmware-emulator-screens.png) and photograph the
 device screens next to it (see part 7). What matters: colours, text clipped at the edges, buttons off-screen, and lag.
@@ -302,16 +278,11 @@ estimate*), so most pulls will land outside it. Tapping **Play** right after a s
 
 ### 3.1 What "pull the power" means on this device
 
-The CoreS3 has a built-in battery (*unverified: about 500 mAh*), so **unplugging USB does not cut power**. Two usable cuts:
-
-* **Reset button** (weaker, instant, repeatable): resets the processor mid-save. The flash chip keeps its power and finishes any
-  erase or write it had started, so this tests the file-system logic (temp file, flush, rename) but not a true brown-out.
-* **Hold the power button until it switches off** (about 6 s on the AXP2101 power chip, *unverified*): too slow to hit a save; use it for the
-  "power cycle" in table row 12, not for pulses.
-
-A true brown-out in the middle of a flash write needs the battery disconnected and USB unplugged (opening the case; not for day
-one). The realistic real-world cut is the battery running flat, so also do this once at the end: **start a long Draw
-session with a low battery and let it die**, then power up and check the levels.
+The CoreS3 has a built-in battery (*unverified: about 500 mAh*), so **unplugging USB does not cut power**. The practical cut is
+the **reset button**: it resets the processor mid-save, instantly and repeatably. The flash chip keeps its power and finishes
+any write it had started, so this tests the file-system logic (temp file, flush, rename) but not a true brown-out. A real
+brown-out needs the battery disconnected (opening the case; not for day one). The real-world version is the battery running
+flat, so also do this once: **draw with a nearly empty battery and let it die**, then power up and check the levels.
 
 ### 3.2 The procedure (20 pulses)
 
@@ -319,7 +290,7 @@ Have the monitor open (`pio device monitor`) and a pen and paper for a tally.
 
 1. From Title -> Levels, open or create a level in slot 4 (**Finger**) and draw something recognisable (a few strokes, a Start pin and a Flag).
 2. Draw one more small stroke (this marks the level as edited).
-3. Tap **Play** (this saves right now), and **within about 0.3 s press the reset button once**. Vary the delay between pulses: 0.0 s, 0.1 s, 0.2 s, 0.3 s, ... also try pressing reset 4.5 to 6 s after a stroke, without leaving Draw, to catch the idle autosave.
+3. Tap **Play** (this saves right now) with one hand and **press the reset button within about 0.3 s** with the other (rest the device on the table, a finger already on reset). Vary the delay between pulses. Some pulses should instead hit the idle autosave: press reset 5-6 s after a stroke without leaving Draw.
 4. After the reboot, go Title -> Levels. Look at slot 4. Then tick the tally: **OK** if the level is there and correct (either the old or the new version), **BAD** if the cell is empty or has a **warning dot** (a corrupt file).
 5. Repeat until you have **20 pulses**, changing the drawing a little between pulses so you can tell old from new.
 
@@ -333,10 +304,9 @@ The game keeps `slot0.scrb` ... `slot9.scrb`, `settings.json` (and `slotN.tmp` w
 corrupt level kept aside) in the LittleFS partition `spiffs`: 0x9E0000 bytes at flash offset 0x610000
 (`partitions_16mb.csv`).
 
-**Not implemented:** there is **no serial `ls` or file dump** in the firmware. If you want one, the smallest useful addition is in
-`setup()` of `src/main.cpp`, after `store.begin(root)`: walk `opendir("/littlefs")` and print every file name and size to
-`Serial` (about 8 lines). A one-line `Serial.printf` around `store.save()` that prints the slot and the time would also let you
-aim the reset button at the save. Ask for it if you want it.
+**Not implemented:** there is **no serial `ls` or file dump** in the firmware. The smallest useful addition: in `setup()` of
+`src/main.cpp`, after `store.begin(root)`, walk `opendir("/littlefs")` and print each file name and size (about 8 lines); a
+`Serial.printf` around `store.save()` would also show when to hit reset. Ask for it if you want it.
 
 Without any code change you can read the whole partition back, unpack it and list it. PlatformIO has installed both tools
 (`~/.platformio/packages/tool-esptool/esptool` and `.../tool-mklittlefs/mklittlefs`; on Windows use the same folders under
@@ -355,7 +325,7 @@ LED flashes); in download mode the app is not running, so a half-written `slotN.
 
 The listing shows each file with its size; `-l` replaced by `-u some_folder` unpacks the files into `some_folder` (a plain
 `.scrb` is the format of [system-design section 4](system-design.md)). The block size 4096 and page size 256 are the
-Arduino-ESP32 LittleFS values (*the listing command was exercised here on an image I built myself, not on a device image*).
+Arduino-ESP32 LittleFS values (*the listing and unpack commands were tried here only on an image built on a PC, not on a device image*).
 
 What to look for: `slot0.scrb`-`slot2.scrb` (the lessons) and your slots, each **24,184 bytes**; `settings.json`; **no
 `.bad` files** (a `.bad` file means the game once found a corrupt level and set it aside); a stray `.tmp` right after a pulse
@@ -390,25 +360,23 @@ Watch the serial monitor. A good start prints, in order:
 
 ```text
 [paper buffers: VisionWork 770336 bytes, photo 614400 bytes, preview gray 76800 bytes, all in PSRAM]
-[camera] on
 [camera] sensor pid 0x9b (GC0308 = 0x9b)
+[camera] on
 ```
 
-(`[camera] on` is printed when the sensor is up; the `pid` line appears first, directly after the driver starts. Order may differ.)
-
-**Success:** the pid line says `0x9b` (the GC0308 sensor) and the screen shows a **moving, recognisable picture** at ten frames a second or better (wave a hand). The four lamps at the bottom left are grey until the four corner marks of the template are found. The text overlay `?` (white with a dark outline) on the picture means "marks not found yet" and is normal now.
+**Success:** the pid line says `0x9b` (the GC0308 sensor) and the screen shows a **moving, recognisable picture** at ten frames a second or better (wave a hand). The four lamps at the bottom left are grey until the four corner marks of the template are found. A white `?` with a dark outline on the picture means "marks not found yet" and is normal now.
 
 **If not:**
 
 | Symptom | Likely cause (row) | What to try |
 |---|---|---|
-| Screen says **"No camera found"** and the monitor prints `[camera] init failed (0x20001)` (`NOT_DETECTED`) or `(0x...)` | 1, 3, 4: power rail, SCCB bus, reset line | The game retries every 3 s; read the full `init failed` lines. Row 3: set `SCCB_ON_INTERNAL_I2C = false` in `camera.cpp`. Row 4: the line `pulsing CAM_RST` shows the reset pulse was needed |
-| `init failed (0x105)` or `(0x103)` | ESP error: not found / invalid state: shared I2C port (row 3) | same as above |
+| Screen says **"No camera found"**; the monitor prints `[camera] init failed (0x20001)` (`NOT_DETECTED`) | 1, 3, 4: power rail, SCCB bus, reset line | The game retries every 3 s. Read the full `init failed` lines (one retry after pulsing `CAM_RST`, row 4). Row 3: set `SCCB_ON_INTERNAL_I2C = false` in `camera.cpp` |
+| `init failed (0x103)` (invalid state) or `(0x105)` (not found) | the shared I2C port (row 3) | same as above |
 | `init failed` and `[camera] out of PSRAM for the live buffers` | PSRAM exhausted | part 6, "out of PSRAM" |
 | `pid` line fine, then `[camera] no frames` after about a second | pins (row 2) or clock (row 5) wrong: no data reaches the S3 | check `PIN_*` against the schematic; try a lower `XCLK_HZ` (10 MHz) |
 | Picture is **noise, stripes or green/magenta** | byte order (row 6) | flip `CAM_SWAP_BYTES` |
 | Picture tears or rolls | clock (row 5) | lower `XCLK_HZ` |
-| **Touch or the tilt stops working** once the camera starts | shared I2C bus (row 3) | `SCCB_ON_INTERNAL_I2C = false`, or tell me exactly what stops |
+| **Touch or the tilt stops working** once the camera starts | shared I2C bus (row 3) | `SCCB_ON_INTERNAL_I2C = false`, and report exactly what stops |
 | Screen says "Waking the camera" for ever | camera task stuck | reset, read the monitor |
 
 The Camera screen is the one place the game can fail without losing anything else: if the camera never works, **Draw with a
@@ -422,28 +390,26 @@ and bouncy layers swap**.
 **Do:** first in the preview, hold a **red** crayon, then a **blue** one, in front of the lens (at arm's length). The preview must show red, then blue.
 **Success:** the same colours as your eyes. **If red looks blue:** flip `CAM_SWAP_RB` (`false` -> `true`) in `camera.cpp`, rebuild, reflash. The white paper must be white and the table brownish, not green or pink (if it is, that is row 6 again).
 
-Later (4.7) confirm it in the full flow: red marks must come out as **spikes** (red hatching) and blue marks as **bouncy** (blue dots).
-
 ### 4.3 Mirror test: is the writing readable?
 
 Row **8**. A mirrored page cannot be straightened, so this must be right.
 
 **Do:** hold a page **with writing on it** (the template has a legend and footer text) in front of the camera. Read it on the screen.
-**Success:** the text reads **correctly** (a page that appears rotated by 180 degrees is fine: the corner-mark ring decides which corner is top-left, so an upside-down device is not a problem).
-**If the text is mirrored:** set `CAM_HMIRROR = true` (left-right mirror) in `camera.cpp`. If the picture is flipped up-down but not mirrored, that is a 180 degree turn combined with a mirror: set `CAM_HMIRROR` too and look again; do not set `CAM_VFLIP` alone unless you also see the text reading backwards (*unverified: do the test, then decide with the picture in your hand*).
+**Success:** the text reads correctly. A page that looks **rotated 180 degrees** (upside down, but not reflected) is fine: the corner-mark ring decides which corner is top-left.
+**If the text is a reflection**, flip the reflected direction: letters reversed left-to-right -> set `CAM_HMIRROR = true`; letters reversed top-to-bottom (a vertical reflection) -> set `CAM_VFLIP = true` (both are `false` now). Rebuild, reflash and look again.
 
 ### 4.4 Focus distance: the sharpness light
 
 Fixed-focus lens: the GC0308 cannot focus; the design claims it is sharp from about 30 cm.
 
-**Do:** with the template in the frame, find the marks (the green outline and four green rings appear around the corner marks, the `?` disappears). Then hold the **? chip** (top right, a help icon) for about **2 seconds**: a white panel with numbers appears: `dist`, `edge`, `paper`, `clip`, `contrast`, `ratio`. Hold it again to hide it. Move the sheet to **30, 35, 40, 45, 50 cm** and write down `dist` and `edge` each time.
+**Do:** with the template in the frame, find the marks (the green outline and four green rings appear around the corner marks, the `?` disappears). Then press and hold the **? chip** (top right) for about **2 seconds** (a short tap opens the stand-up guide instead): a white panel with numbers appears: `dist`, `edge`, `paper`, `clip`, `contrast`, `ratio`. Hold it again to hide it. Move the sheet to **30, 35, 40, 45, 50 cm** and write down `dist` and `edge` each time.
 
 **What the numbers mean (green limits are in `shared/constants.json`):**
 
 | Reading | Green when | Row |
 |---|---|---|
 | `edge` (sharpness, px of blur on an edge) | 2.0 px or less (yellow up to 3.0) | build-plan Step 6 |
-| `dist` | the dot rectangle is 226-291 px wide in the 320-wide preview, about 35-45 cm | focal length row |
+| `dist` | the dot rectangle is 226-291 px wide in QVGA (320-wide) pixels, about 35-45 cm | focal length row |
 | `paper` / `clip` / `contrast` | paper mean 140-245, clipped under 3 %, contrast at least 100 | rows 9, 10 |
 | `ratio` x / y | between 0.84 and 1.19 | the **Level** light |
 
@@ -464,20 +430,20 @@ The four lamps (left to right): **distance** (ruler), **sharp** (focus), **light
 
 **Exposure.** Row 10: compare `paper` in the numbers panel: white paper should read about **220**. Much lower (grey paper): raise `AE_LEVEL` in `shared/constants.json` (now 1) and run `node ../tools/gen-config.mjs`. If it does not change, the driver has no `set_ae_level` and white paper may read dark (the call is skipped silently).
 
-**Check fps and heap.** There is no fps counter on the Check screen. Judge by eye (smooth = at least about 10 fps). If it stutters, report it; the live-check rate is `LIVE_CHECK_MS = 125` in `game_paper.cpp`.
+There is no fps counter on the Check screen: judge by eye (smooth is at least about 10 fps).
 
 ### 4.6 The full photo flow
 
-**Do:** draw on the template with a **fat black marker** (some ground), a **red** mark and a **blue** mark, and the Start and Flag stays printed. Stand the device, put the page at 40 cm and wait for all four lamps green and the green **GO** pulsing. Tap **GO** and step back. The screen counts **3, 2, 1**, then a flash (the shutter) and the **Processing** sparkle, then **Review**.
+**Do:** draw on the template with a **fat black marker** (ground), a **red** mark (spike) and a **blue** mark (bouncy). Stand the device, put the page at 40 cm and wait for all four lamps green and the green **GO** pulsing. Tap **GO** and step back. The screen counts **3, 2, 1**, then a flash (the shutter) and the **Processing** sparkle, then **Review**.
 
-**Success:** Review shows your drawing straightened, black as ground, **red as spikes**, **blue as bouncy**, the Start and Flag pins; tap the green tick: the level opens in Play. Watch the monitor:
+**Success:** Review shows your drawing straightened, black as ground, **red as spikes**, **blue as bouncy**, the Start and Flag pins (draggable); tap the green tick: the level opens in Play. Watch the monitor:
 
 ```text
-[paper vision N ms ...: status 0 marks found ink ... blobs ...]
+[paper vision N ms ...: status S marks found ink ... blobs ...]
 [paper accept slot N]
 ```
 
-The lights and the countdown work with the camera locked: row 9 (exposure lock): the snap should look as bright as the preview just before it. Row 11, 12, 13 are covered by parts 5 and 1.5.
+Row 9 (exposure lock): the snap should look as bright as the preview just before it. Row 11 is part 5; row 12 (the stand-up gate) was checked in 4.1; row 13 (idle power) is the battery note in 4.7.
 
 | Visible failure | Cause | What to flip or check |
 |---|---|---|
@@ -485,12 +451,12 @@ The lights and the countdown work with the camera locked: row 9 (exposure lock):
 | Whole Review image mirrored / the drawing's text backwards | row 8 | `CAM_HMIRROR` |
 | Review image darker than the preview, or the snap looks grey | row 9 or 10 | lock not applied (the driver ignores it) or `AE_LEVEL`; write the GC0308 registers with `set_reg` (see the table) |
 | **"The camera missed the picture"** toast after the countdown | grab failed | read the monitor for `[camera] no frames`; retry |
-| Retake pulses yellow, **status not 0** | marks not found / page not straight | move closer, retake; send the snapshot (part 7) |
+| Retake pulses yellow (a poor result) | marks not found or page not straight | move closer, retake; note the `status` in the monitor and photograph the screen (part 7) |
 | The level starts with the ball inside ground | pins landed on ink | Start / Flag are draggable on Review; note how often |
 
 ### 4.7 Entering and leaving 50 times
 
-Build-plan Step 6: enter and leave the Check screen 50 times (Title -> Paper -> back), watching for a crash and watching the free PSRAM in the monitor (`PSRAM ... free` is printed only at boot, so reboot and compare). Touch must keep working with the camera on. Also note the **battery drop in 5 minutes** on the Check screen.
+Build-plan Step 6: enter and leave the Check screen 50 times (Title -> Paper -> back): no crash, and touch and tilt keep working with the camera on. Free PSRAM is printed only at boot, so there is no easy leak check yet. Also note the **battery drop over 5 minutes** on the Check screen (row 13).
 
 ---
 
@@ -502,11 +468,10 @@ Build-plan Step 6: enter and leave the Check screen 50 times (Title -> Paper -> 
 [paper vision N ms (this computer, not the device): status S marks found ink 0.0xxx blobs B]
 ```
 
-The wording "this computer, not the device" is leftover from the emulator: on the device `N` is measured with the chip's own
-timer (`esp_timer_get_time()` around `visionProcess`) and **is the number you want**. It covers the whole pipeline **including the automatic silent retry**
-(a poor first pass is repeated once, so a 2x number is normal for a dim photo). `Review -> thinner / thicker ink` prints a second
-number only in the emulator build (`[paper rethreshold ...]`); on the device it is not printed. The stage-by-stage times and the
-live-check time are **not printed** anywhere on the device.
+The wording "this computer, not the device" is a leftover from the emulator: on the device `N` is measured with the chip's own
+timer (`esp_timer_get_time()` around `visionProcess`) and **is the number you want**. It includes the automatic silent retry (a
+poor first pass is repeated once, so a doubled number is normal for a dim photo). The thinner/thicker ink time, the stage times
+and the live-check time are **not printed** on the device.
 
 For a PC reference, the whole pass takes about **9 ms** on a desktop CPU (`pio test -e native -f test_vision -vv`); the S3 at
 240 MHz with software doubles is much slower, so expect **hundreds of milliseconds to a few seconds** (*a guess*).
@@ -518,11 +483,10 @@ is acceptable**: the Processing screen animates, and the screen always shows for
 
 **If it is over 10 s:**
 
-1. Check you built the right thing: `pio run -e cores3` (release); a debug build is far slower.
-2. Look for an optimisation flag: add `-O2` to `build_flags` of `[env:cores3]` in `platformio.ini` (PlatformIO defaults the ESP32 builds to size optimisation; *unverified that it takes effect*), rebuild and compare.
-3. The vision task runs on core 0 at priority 1 while the camera task (priority 2) is still streaming for the first two seconds after the snap, which may steal time. Report `N` for the first capture after a Check and for one after waiting; a big difference points here (*unverified*).
-4. If the device **reboots during Processing** with `Task watchdog got triggered` in the monitor, the long computation starves the idle task of core 0: tell me (the fix is a yield inside the vision loops or a bigger watchdog timeout; do not guess at it on the day).
-5. Add stage timings (one `Serial.printf` per stage in `lib/core/src/vision.cpp`) and send them. The PC test already prints them for the desktop: `find marks`, `homography + warp`, `visionProcess`, `re-threshold`, `live check`.
+1. Try an optimisation flag: add `-O2` to `build_flags` of `[env:cores3]` in `platformio.ini` (ESP32 builds default to size optimisation; *unverified that it takes effect*), rebuild and compare.
+2. The vision task runs on core 0 at priority 1 while the camera task (priority 2) may still be streaming for the first two seconds after the snap and steal time (*unverified*). Compare `N` for a capture right after a Check with one taken after waiting.
+3. If the device **reboots during Processing** with `Task watchdog got triggered` in the monitor, the long computation starves core 0's idle task: report it (the fix is a yield in the vision loops or a longer watchdog timeout; do not guess on the day).
+4. Ask for per-stage timings (one `Serial.printf` per stage in `lib/core/src/vision.cpp`; the PC test prints the same stages: find marks, homography + warp, whole pass, re-threshold, live check).
 
 ---
 
@@ -530,7 +494,7 @@ is acceptable**: the Processing screen animates, and the screen always shows for
 
 | Symptom | Likely cause | What to try |
 |---|---|---|
-| **No serial port** appears | Charge-only cable; board off; no permission; driver | Swap the cable (data cable!). Press the power button once (a 3 s press on the side may be needed to wake it). `pio device list`. Linux: serial group + udev rules (part 0), `dmesg -w` while plugging in. Windows: Device Manager. Try another USB port (not a hub). Enter download mode (hold reset ~3 s, green LED) |
+| **No serial port** appears | Charge-only cable; board off; no permission; driver | Swap the cable (data cable!). Press the power button once. `pio device list`. Linux: serial group + udev rules (part 0), `dmesg -w` while plugging in. Windows: Device Manager. Try another USB port (not a hub). Enter download mode (hold reset ~3 s, green LED) |
 | Upload says "Failed to connect" / "No serial data" | Not in download mode | Hold reset ~3 s until the green LED flashes, `pio device list` for the new port, upload with `--upload-port` |
 | **Upload succeeded but nothing happens** | Wrong partition table / old firmware / monitor opened too late | Press reset with the monitor open; `pio run -e cores3 -t erase`, then upload again |
 | **Boot loop** (screen flickers, monitor repeats `rst:` or a backtrace) | Crash at start (PSRAM config, a bad pointer) | Copy the first backtrace into your report. Try the hardware-check app (`-e hwcheck`): if that runs, the fault is in the game's start-up; erase flash (below) and re-flash. Do not keep power-cycling a loop |
@@ -538,13 +502,12 @@ is acceptable**: the Processing screen animates, and the screen always shows for
 | **Red screen with white text** | `fatal()` in the game: no PSRAM, or the screen buffers could not be allocated | The text names it. `No PSRAM found`: check `-DBOARD_HAS_PSRAM` in `platformio.ini` and that PSRAM is present in INFO (*the board file may need the right PSRAM memory type; unverified*) |
 | **Touch dead** | Touch controller not started, wrong orientation | Hardware-check TOUCH page: does the red dot move? Reset. If only part of the screen works, note the dead zone |
 | **Sound silent** | Volume at Off or too low; the amplifier not enabled | Hardware-check SOUND page, volume 255. In the game, the speaker chip shows Off or Low; step it to Medium. If SOUND is silent on the check app, report it (the M5Unified speaker init is the suspect) |
-| **Tilt inverted** or **ball runs the wrong way** | `TILT_SIGN` | Part 1.5: flip `TILT_SIGN` (+1/-1) in `src/app/input.h`, rebuild, reflash |
-| **Tilt does nothing** | wrong axis | TILT page; set `TILT_AXIS` |
+| **Tilt inverted**, or does nothing | `TILT_SIGN` / `TILT_AXIS` | Part 1.5: flip `TILT_SIGN` (+1/-1) or change `TILT_AXIS` in `src/app/input.h`, rebuild, reflash |
 | **"No camera found"** / `[camera] init failed (0x...)` | Camera power, SCCB bus, pins | Part 4.1 table. The rest of the game is unaffected |
 | **"Not enough memory for the camera"** toast, or `[paper] not enough PSRAM for the vision buffers` / `[camera] out of PSRAM` | Out of PSRAM (the camera needs about 1.2 MB, vision 0.8 MB, the game about 0.3 MB) | The boot line `PSRAM ... free ... KB` says how much is left; on a CoreS3 8 MB should be plenty. Report the number. If it is far below 8 MB, PSRAM is not configured right |
 | **The app freezes on Processing** | The vision task never finishes or starves a watchdog | Monitor: `Task watchdog got triggered` -> part 5, item 4. Otherwise wait 30 s (a slow first pass); reset; it is not data-destroying (nothing is saved until you tap the tick on Review) |
 | `LittleFS mount failed: levels will not be saved this session` | File system not mountable (wrong partition label, damaged flash) | The code mounts with `LittleFS.begin(true, "/littlefs")`, which formats on failure, so this means even formatting failed. **Erase flash** (below) and reflash. If it persists, the partition table is not the one in `partitions_16mb.csv`: check that the build used `board_build.partitions` |
-| Levels vanish or show a warning dot | Corrupt level | Corrupt levels are never deleted: the file is set aside as `slotN.bad`; read the partition back (part 3.3) and send it |
+| Levels vanish or show a warning dot | Corrupt level | Never deleted: set aside as `slotN.bad`; read the partition back (part 3.3) and send it |
 
 **Erase everything and start over** (this wipes the app, the saved levels and settings; you have to upload again afterwards):
 
@@ -573,13 +536,11 @@ Put the numbers where the project keeps them, so the next session can act on the
 **Photos and captures:**
 
 * A phone photo of each game screen next to the emulator picture, and of the hardware-check pages (INFO palette, TOUCH, TILT, BALL).
-* The **full serial log** of the session as a text file (`pio device monitor > day-one.log` would capture it, but the monitor wants a terminal: use `pio device monitor | tee day-one.log`; or copy-paste).
+* The **full serial log** of the session as a text file (`pio device monitor | tee day-one.log`, or copy-paste).
 * Photos of **every paper test drawing** (phone photos, landscape, about 40 cm, three lights, some tilted 10-20 degrees) go into **`shared/golden/photos/`** (the folder does not exist yet; create it) with a name that says the light and the tilt, e.g. `lamp-tilt15-03.jpg`. These tune the vision in the simulator first (build-plan "Before the device arrives").
-* A phone photo of the **device screen at Review** for each capture, next to the paper.
-* The flash image of the file system (3.3) if any power pulse failed.
+* A phone photo of the **Review screen** next to the paper for each capture, and the flash image of the file system (3.3) if any power pulse failed.
 
 **Not available today (ask if you want them):** there is **no way to save the raw 640 x 480 snapshot from the device**. The emulator
-can already read a raw RGB565 dump as a test photo (`EMU_PHOTO`, see [firmware/emu/README.md](../firmware/emu/README.md)),
-so the most valuable thing to add after day one is a small function that writes the snapshot buffer (`paper.snap`, 614,400 bytes)
-to `/littlefs/snap.raw`, which you could then read back with the 3.3 procedure and feed straight into the vision tests (*unverified idea*).
-There is also no fps counter on the Check screen and no per-stage vision timing.
+can already read a raw RGB565 dump as a test photo (`EMU_PHOTO`, see [firmware/emu/README.md](../firmware/emu/README.md)), so the most
+valuable addition after day one is a function that writes the snapshot buffer (`paper.snap`, 614,400 bytes) to `/littlefs/snap.raw`,
+to be read back with the 3.3 procedure (*unverified idea*). There is also no Check-screen fps counter and no per-stage vision timing.
