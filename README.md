@@ -22,7 +22,7 @@ marker plus red and blue, photograph it, and press **Upload photo**, or use **We
 level drawn onto the template by a simulated camera (with stress presets: dim light, shadows, tilt, noise, blur).
 **Download level** saves a `.scrb` file in the same format the device will use.
 
-More in [sim/README.md](sim/README.md).
+More in [sim/README.md](sim/README.md). Got the CoreS3? Start with the [day-one runbook](docs/day-one-runbook.md).
 
 ## What is in here
 

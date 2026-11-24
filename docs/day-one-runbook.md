@@ -1,13 +1,8 @@
 # Day-one runbook: the first day with the real CoreS3
 
-For a parent who is comfortable in a terminal but is not an embedded engineer. The firmware has been written and tested on a PC
-(native tests plus the PC emulator) but **has never run on the device**. This runbook walks through the first flash, the
-measurements, the game, the camera and what to send back. Background: [build-plan.md](build-plan.md) (Steps 0-7),
-[hardware-notes.md](hardware-notes.md) (the table you fill in), [firmware/README.md](../firmware/README.md).
+For a parent who is comfortable in a terminal but is not an embedded engineer. The firmware has been written and tested on a PC (native tests plus the PC emulator) but **has never run on the device**. This runbook walks through the first flash, the measurements, the game, the camera and what to send back. Background: [build-plan.md](build-plan.md) (Steps 0-7), [hardware-notes.md](hardware-notes.md) (the table you fill in), [firmware/README.md](../firmware/README.md).
 
-How to read it: every step has **Do**, **Success** and **If not**. A line marked *unverified* is something nobody could check
-without the device (or without the real tools on the machine that wrote this). Do the steps in order; each one makes the next
-one safer. Budget: about 3 hours with a break, plus one longer session for the camera.
+How to read it: every step has **Do**, **Success** and **If not**. A line marked *unverified* is something nobody could check without the device (or without the real tools on the machine that wrote this). Do the steps in order; each one makes the next one safer. Budget: about 3 hours with a break, plus one longer session for the camera.
 
 Parts: 0 tools and a PC sanity check (30 min), 1 hardware-check app (40), 2 the game and a smoke test (20), 3 power-cut test (30), 4 camera bring-up (60), 5 timing the vision (15), 6 troubleshooting, 7 what to send back (15).
 
@@ -35,14 +30,11 @@ pip install platformio
 git clone https://github.com/ambikc/scribble.git && cd scribble/firmware
 ```
 
-Every command below is run from the `firmware/` folder. The first `pio run` downloads the ESP32 toolchain and libraries (a few
-hundred MB, a few minutes). If `pio` is not on your PATH, use `python -m platformio`.
+Every command below is run from the `firmware/` folder. The first `pio run` downloads the ESP32 toolchain and libraries (a few hundred MB, a few minutes). If `pio` is not on your PATH, use `python -m platformio`.
 
 ### USB serial: which port, per operating system
 
-The CoreS3 has no USB-to-serial chip. Its ESP32-S3 speaks USB itself and shows up as a **USB serial/JTAG device**
-(vendor id `303a`). The build flags `-DARDUINO_USB_CDC_ON_BOOT=1` (in `platformio.ini`; the PlatformIO board file adds
-`-DARDUINO_USB_MODE=1`) make `Serial` go over that USB port, so there is **one cable for power, flashing and logs**.
+The CoreS3 has no USB-to-serial chip. Its ESP32-S3 speaks USB itself and shows up as a **USB serial/JTAG device** (vendor id `303a`). The build flags `-DARDUINO_USB_CDC_ON_BOOT=1` (in `platformio.ini`; the PlatformIO board file adds `-DARDUINO_USB_MODE=1`) make `Serial` go over that USB port, so there is **one cable for power, flashing and logs**.
 
 | OS | Port looks like | What to do |
 |---|---|---|
@@ -62,14 +54,11 @@ Find the port with the device plugged in:
 pio device list
 ```
 
-If PlatformIO cannot guess the port on upload (the board definition says an upload port is required), name it:
-`pio run -e hwcheck -t upload --upload-port /dev/ttyACM0`, and `pio device monitor --port /dev/ttyACM0`. Use your own port
-name in every command below if autodetection fails.
+If PlatformIO cannot guess the port on upload (the board definition says an upload port is required), name it: `pio run -e hwcheck -t upload --upload-port /dev/ttyACM0`, and `pio device monitor --port /dev/ttyACM0`. Use your own port name in every command below if autodetection fails.
 
 **Download mode.** Uploads normally reset the board into the bootloader by themselves over USB. If an upload cannot connect:
 **hold the reset button about 3 seconds until the green LED flashes**, then upload again (the port number may change: run
-`pio device list` again). After an upload the board restarts and the port re-enumerates, so restart `pio device monitor`.
-Messages printed before the monitor connects are lost: to see boot messages open the monitor first, then tap reset once.
+`pio device list` again). After an upload the board restarts and the port re-enumerates, so restart `pio device monitor`. Messages printed before the monitor connects are lost: to see boot messages open the monitor first, then tap reset once.
 
 ### A sanity check with no hardware
 
@@ -88,8 +77,7 @@ pio run -e hwcheck && pio run -e cores3
 
 **Success:** both end with `SUCCESS` (hwcheck: RAM 15.9 %, flash 17.9 %; the game is larger). These are the two firmware images you will flash.
 
-Optional, to see what the game *should* look like: the PC emulator (needs SDL2: `sudo apt-get install -y libsdl2-dev`, macOS `brew install sdl2`).
-A window opens (mouse = finger, arrow keys = tilt, Space = jump); details in [firmware/emu/README.md](../firmware/emu/README.md).
+Optional, to see what the game *should* look like: the PC emulator (needs SDL2: `sudo apt-get install -y libsdl2-dev`, macOS `brew install sdl2`). A window opens (mouse = finger, arrow keys = tilt, Space = jump); details in [firmware/emu/README.md](../firmware/emu/README.md).
 
 ```bash
 pio run -e emu && .pio/build/emu/program
@@ -111,16 +99,13 @@ pio run -e hwcheck -t upload
 pio device monitor
 ```
 
-Leave the monitor open for the whole of part 1: **every page except INFO prints its numbers there**, ready to copy into
-[hardware-notes.md](hardware-notes.md). To see the first line (`Scribble Run hardware check. display 320 x 240. Pages: ...`),
-tap reset once with the monitor open. (`pio run -e hwcheck -t upload -t monitor` does both in one go; *unverified*.)
+Leave the monitor open for the whole of part 1: **TOUCH, SPEED, TILT and BALL print their numbers there** (INFO and SOUND do not), ready to copy into [hardware-notes.md](hardware-notes.md). To see the first line (`Scribble Run hardware check. display 320 x 240. Pages: ...`), tap reset once with the monitor open. (`pio run -e hwcheck -t upload -t monitor` does both in one go; *unverified*.)
 
 **Success:** the screen shows "Hardware check" with nine coloured squares; the monitor shows the banner line above.
 **If not:** see the troubleshooting table in part 6 (no port, blank screen, boot loop).
 
 **Navigation:** tap the **right half of the bottom bar** for the next page, the **left half** to go back. The pages are, in
-order: INFO, TOUCH, SPEED, TILT, BALL, SOUND. Write numbers into the "Measured" column of the table in
-[hardware-notes.md](hardware-notes.md) as you go (or into a scratch file and paste later).
+order: INFO, TOUCH, SPEED, TILT, BALL, SOUND. Write numbers into the "Measured" column of the table in [hardware-notes.md](hardware-notes.md) as you go (or into a scratch file and paste later).
 
 ### 1.2 INFO: palette and memory
 
@@ -129,13 +114,8 @@ Fills: *PSRAM size / free*, *Palette looks right*.
 * Read the text under the squares: **PSRAM about 8 MB (8192 KB)** expected (the INFO page does not print to serial; read it off the screen or photograph it), flash 16 MB, display 320 x 240. The game also prints `PSRAM ... KB, free ... KB` at boot.
 * Look at the nine squares (paper, paper dot, ink, red, blue, green, yellow, white, grey). The paper must look **cream, not white**, the ink **near-black**; red and blue must not be swapped (square 4 red, square 5 blue). Photograph it.
 
-**Decisions**
-
-| You see | Meaning | Do |
-|---|---|---|
-| PSRAM 0 or missing | The board is running without PSRAM; the game will refuse to start ("No PSRAM found") | part 6, "out of PSRAM" |
-| Red and blue swapped, or everything tinted | Colour order of the panel | note it, do not guess a fix; send the photo |
-| Paper too yellow / too white / ink washed out | Palette values are guesses | change `PAPER`, `INK`, ... in `shared/constants.json`, run `node ../tools/gen-config.mjs`, rebuild (needs Node) |
+**Decisions:** PSRAM 0 or missing: the game will refuse to start (part 6, "out of PSRAM"). Red and blue swapped or everything tinted: a
+colour-order problem; note it and send the photo, do not guess a fix. Paper too yellow or too white, ink washed out: the palette values are guesses; change `PAPER`, `INK`, ... in `shared/constants.json`, run `node ../tools/gen-config.mjs` (needs Node), rebuild.
 
 ### 1.3 TOUCH: his finger, the edges, the sample rate
 
@@ -167,8 +147,7 @@ Fills: *Full 320x240 push from PSRAM*, *40x40 push from SRAM*, *40x40 clip of th
 | 40 x 40 from SRAM | 1.5 ms or less | Much slower: SPI clock is below 40 MHz, report it |
 | 40 x 40 clip of PSRAM sprite | 1.5 ms or less | If this is about as slow as the full push, clipped presents do not help and the SRAM composite buffer idea ([system-design 6.2](system-design.md#62-rendering-a-double-buffered-sprite-in-psram)) is needed instead |
 
-The game still plays correctly at about 30 fps: physics always advances in 1/60 s steps (up to 6 catch-up ticks per frame).
-The fps matters for feel (ink latency while drawing), not correctness.
+The game still plays correctly at about 30 fps (physics always advances in 1/60 s steps, up to 6 catch-up ticks per frame); it matters for feel, such as ink latency while drawing.
 
 ### 1.5 TILT: axis and sign, noise, full scale
 
@@ -201,8 +180,7 @@ Fills: *BALL page frame rate*, *Physics time per tick*.
 | Result | Do |
 |---|---|
 | fps about 30 (the full push time, see 1.4) | Normal while the present is full-frame. The BALL page pushes the whole screen every pass, so this fps is bounded by the SPEED number |
-| Physics under 1000 us/tick | Fine. Budget is 16,667 us per frame ([system-design 6.3](system-design.md#63-frame-time-budget-play-60-hz--1667-ms)). The physics uses `double` in software on the S3, so a number of 100-800 us would be plausible (*a guess*) |
-| Physics over about 2000 us/tick | Report it; the frame budget gets tight with drawing on top |
+| Physics under 1000 us/tick | Fine. The budget is 16,667 us per frame ([system-design 6.3](system-design.md#63-frame-time-budget-play-60-hz--1667-ms)); `double` is software on the S3, so 100-800 us is plausible (*a guess*). Over about 2000: report it |
 | Ball runs the wrong way | Back to 1.5 |
 
 ### 1.7 SOUND: volume by ear
@@ -242,9 +220,7 @@ storage root: /littlefs
 
 ### 2.1 The smoke-test script
 
-This follows the emulator's end-to-end script, `emu/scripts/e2e_draw_play_win.txt` (Chooser, Finger, draw, Play, win). The
-screens are almost all icons, no words. The bottom bar of the Title is: **Levels** (grid), **Paper** (yellow camera), **Play**
-(green), **Draw** (pencil). Leave Paper for part 4.
+This follows the emulator's end-to-end script, `emu/scripts/e2e_draw_play_win.txt` (Chooser, Finger, draw, Play, win). The screens are almost all icons, no words. The bottom bar of the Title is: **Levels** (grid), **Paper** (yellow camera), **Play** (green), **Draw** (pencil). Leave Paper for part 4.
 
 | # | Do | Expect | Compare with the emulator |
 |---|---|---|---|
@@ -273,16 +249,11 @@ device screens next to it (see part 7). What matters: colours, text clipped at t
 interrupted save should leave the old file intact. This test checks that on real flash. Each level file is 24,184 bytes.
 
 **When the game saves** (so you can aim at it): a few seconds (5 s) after the last edit while in Draw, and **immediately when
-you leave Draw** (Play, Menu -> Levels / Home, back). A save is a short window (a few tens to a few hundred milliseconds; *an
-estimate*), so most pulls will land outside it. Tapping **Play** right after a stroke is the way to start a save on cue.
+you leave Draw** (Play, Menu -> Levels / Home, back). A save is a short window (a few tens to a few hundred milliseconds; *an estimate*), so most pulls will land outside it. Tapping **Play** right after a stroke is the way to start a save on cue.
 
 ### 3.1 What "pull the power" means on this device
 
-The CoreS3 has a built-in battery (*unverified: about 500 mAh*), so **unplugging USB does not cut power**. The practical cut is
-the **reset button**: it resets the processor mid-save, instantly and repeatably. The flash chip keeps its power and finishes
-any write it had started, so this tests the file-system logic (temp file, flush, rename) but not a true brown-out. A real
-brown-out needs the battery disconnected (opening the case; not for day one). The real-world version is the battery running
-flat, so also do this once: **draw with a nearly empty battery and let it die**, then power up and check the levels.
+The CoreS3 has a built-in battery (*unverified: about 500 mAh*), so **unplugging USB does not cut power**. The practical cut is the **reset button**: it resets the processor mid-save, instantly and repeatably. The flash chip keeps its power and finishes any write it had started, so this tests the file-system logic (temp file, flush, rename) but not a true brown-out. A real brown-out needs the battery disconnected (opening the case; not for day one). The real-world version is the battery running flat, so also do this once: **draw with a nearly empty battery and let it die**, then power up and check the levels.
 
 ### 3.2 The procedure (20 pulses)
 
@@ -295,23 +266,16 @@ Have the monitor open (`pio device monitor`) and a pen and paper for a tally.
 5. Repeat until you have **20 pulses**, changing the drawing a little between pulses so you can tell old from new.
 
 **Success:** 20 of 20 OK. Both the old and the new version are fine; what must never happen is a warning dot, an empty slot
-where there was a level, or a crash at boot. **If not:** note which pulse failed, which timing, and what you saw; do not
-"fix" it, send the log and the flash image (3.3).
+where there was a level, or a crash at boot. **If not:** note which pulse failed, which timing, and what you saw; do not "fix" it, send the log and the flash image (3.3).
 
 ### 3.3 Inspecting the slot files (the LittleFS partition)
 
-The game keeps `slot0.scrb` ... `slot9.scrb`, `settings.json` (and `slotN.tmp` while a save is in flight, `slotN.bad` for a
-corrupt level kept aside) in the LittleFS partition `spiffs`: 0x9E0000 bytes at flash offset 0x610000
-(`partitions_16mb.csv`).
+The game keeps `slot0.scrb` ... `slot9.scrb`, `settings.json` (and `slotN.tmp` while a save is in flight, `slotN.bad` for a corrupt level kept aside) in the LittleFS partition `spiffs`: 0x9E0000 bytes at flash offset 0x610000 (`partitions_16mb.csv`).
 
 **Not implemented:** there is **no serial `ls` or file dump** in the firmware. The smallest useful addition: in `setup()` of
-`src/main.cpp`, after `store.begin(root)`, walk `opendir("/littlefs")` and print each file name and size (about 8 lines); a
-`Serial.printf` around `store.save()` would also show when to hit reset. Ask for it if you want it.
+`src/main.cpp`, after `store.begin(root)`, walk `opendir("/littlefs")` and print each file name and size (about 8 lines); a `Serial.printf` around `store.save()` would also show when to hit reset. Ask for it if you want it.
 
-Without any code change you can read the whole partition back, unpack it and list it. PlatformIO has installed both tools
-(`~/.platformio/packages/tool-esptool/esptool` and `.../tool-mklittlefs/mklittlefs`; on Windows use the same folders under
-`%USERPROFILE%\.platformio\packages` and `.exe`). Put the device in download mode first (hold reset about 3 s until the green
-LED flashes); in download mode the app is not running, so a half-written `slotN.tmp` is still there to see (a normal boot removes it).
+Without any code change you can read the whole partition back, unpack it and list it. PlatformIO has installed both tools (`~/.platformio/packages/tool-esptool/esptool` and `.../tool-mklittlefs/mklittlefs`; on Windows use the same folders under `%USERPROFILE%\.platformio\packages` and `.exe`). Put the device in download mode first (hold reset about 3 s until the green LED flashes); in download mode the app is not running, so a half-written `slotN.tmp` is still there to see (a normal boot removes it).
 
 ```bash
 ~/.platformio/packages/tool-esptool/esptool --chip esp32s3 --port /dev/ttyACM0 read-flash 0x610000 0x9E0000 /tmp/scribble-fs.bin
@@ -323,32 +287,25 @@ LED flashes); in download mode the app is not running, so a half-written `slotN.
 ~/.platformio/packages/tool-mklittlefs/mklittlefs -l -b 4096 -p 256 -s 0x9E0000 /tmp/scribble-fs.bin
 ```
 
-The listing shows each file with its size; `-l` replaced by `-u some_folder` unpacks the files into `some_folder` (a plain
-`.scrb` is the format of [system-design section 4](system-design.md)). The block size 4096 and page size 256 are the
-Arduino-ESP32 LittleFS values (*the listing and unpack commands were tried here only on an image built on a PC, not on a device image*).
+The listing shows each file with its size; `-l` replaced by `-u some_folder` unpacks the files into `some_folder` (a plain `.scrb` is the format of [system-design section 4](system-design.md)). The block size 4096 and page size 256 are the Arduino-ESP32 LittleFS values (*the listing and unpack commands were tried here only on an image built on a PC, not on a device image*).
 
-What to look for: `slot0.scrb`-`slot2.scrb` (the lessons) and your slots, each **24,184 bytes**; `settings.json`; **no
-`.bad` files** (a `.bad` file means the game once found a corrupt level and set it aside); a stray `.tmp` right after a pulse
-is normal and is cleaned at the next boot.
+What to look for: `slot0.scrb`-`slot2.scrb` (the lessons) and your slots, each **24,184 bytes**; `settings.json`; **no `.bad` files** (a `.bad` file means the game once found a corrupt level and set it aside); a stray `.tmp` right after a pulse is normal and is cleaned at the next boot.
 
 **Putting files on the device (optional, for the countdown voice clips):** create `firmware/data/`, put `three.wav`, `two.wav`,
-`one.wav`, `snap.wav` (16 kHz, 16-bit, mono) in it and run `pio run -e cores3 -t uploadfs`. **This overwrites the whole partition,
-including every saved level**, and the build fails with "can't read source directory" if `data/` does not exist.
+`one.wav`, `snap.wav` (16 kHz, 16-bit, mono) in it and run `pio run -e cores3 -t uploadfs`. **This overwrites the whole partition, including every saved level**, and the build fails with "can't read source directory" if `data/` does not exist.
 
 ---
 
 ## 4. Camera bring-up
 
-Everything about the camera is a **guess** (every value is a `// UNVERIFIED on hardware` constant in
-`firmware/src/app/camera.cpp`; the checklist is the "Camera bring-up" table in [hardware-notes.md](hardware-notes.md),
-rows 1-13). The order below goes from the cheapest, safest check to the most committing one. After each step, if it fails,
+Everything about the camera is a **guess** (every value is a `// UNVERIFIED on hardware` constant in `firmware/src/app/camera.cpp`; the checklist is the "Camera bring-up" table in [hardware-notes.md](hardware-notes.md), rows 1-13). The order below goes from the cheapest, safest check to the most committing one. After each step, if it fails,
 **stop and fix that before the next**: a wrong guess early makes every later result meaningless.
 
 **Always:** keep the monitor open, keep USB connected (the camera drains the battery), and the device **standing on its stand**,
 screen towards you, the camera looking at the sheet. Put the printed template on a clipboard or card leaned against books,
 **40 cm away**, filling the on-screen target frame; measure the 40 cm with a ruler or a string.
 
-Camera files may be changing while you read this. Names below are constants in `camera.cpp`; search for them rather than relying on line numbers.
+The constants named below are in `firmware/src/app/camera.cpp`; search for them by name.
 
 ### 4.1 The Check screen with the live preview only
 
@@ -379,13 +336,11 @@ Watch the serial monitor. A good start prints, in order:
 | **Touch or the tilt stops working** once the camera starts | shared I2C bus (row 3) | `SCCB_ON_INTERNAL_I2C = false`, and report exactly what stops |
 | Screen says "Waking the camera" for ever | camera task stuck | reset, read the monitor |
 
-The Camera screen is the one place the game can fail without losing anything else: if the camera never works, **Draw with a
-finger still works completely**.
+The Camera screen is the one place the game can fail without losing anything else: if the camera never works, **Draw with a finger still works completely**.
 
 ### 4.2 Colour order: is a red crayon red?
 
-Row **6** (byte order, done above) and row **7** (red/blue order). This one matters: with red and blue swapped, the **spike
-and bouncy layers swap**.
+Row **6** (byte order, done above) and row **7** (red/blue order). This one matters: with red and blue swapped, the **spike and bouncy layers swap**.
 
 **Do:** first in the preview, hold a **red** crayon, then a **blue** one, in front of the lens (at arm's length). The preview must show red, then blue.
 **Success:** the same colours as your eyes. **If red looks blue:** flip `CAM_SWAP_RB` (`false` -> `true`) in `camera.cpp`, rebuild, reflash. The white paper must be white and the table brownish, not green or pink (if it is, that is row 6 again).
@@ -451,8 +406,7 @@ Row 9 (exposure lock): the snap should look as bright as the preview just before
 | Whole Review image mirrored / the drawing's text backwards | row 8 | `CAM_HMIRROR` |
 | Review image darker than the preview, or the snap looks grey | row 9 or 10 | lock not applied (the driver ignores it) or `AE_LEVEL`; write the GC0308 registers with `set_reg` (see the table) |
 | **"The camera missed the picture"** toast after the countdown | grab failed | read the monitor for `[camera] no frames`; retry |
-| Retake pulses yellow (a poor result) | marks not found or page not straight | move closer, retake; note the `status` in the monitor and photograph the screen (part 7) |
-| The level starts with the ball inside ground | pins landed on ink | Start / Flag are draggable on Review; note how often |
+| Retake pulses yellow, or a pin lands on ink | marks not found, page not straight, or the pin placement | retake; pins are draggable on Review; note the `status` and photograph the screen (part 7) |
 
 ### 4.7 Entering and leaving 50 times
 
@@ -468,13 +422,9 @@ Build-plan Step 6: enter and leave the Check screen 50 times (Title -> Paper -> 
 [paper vision N ms (this computer, not the device): status S marks found ink 0.0xxx blobs B]
 ```
 
-The wording "this computer, not the device" is a leftover from the emulator: on the device `N` is measured with the chip's own
-timer (`esp_timer_get_time()` around `visionProcess`) and **is the number you want**. It includes the automatic silent retry (a
-poor first pass is repeated once, so a doubled number is normal for a dim photo). The thinner/thicker ink time, the stage times
-and the live-check time are **not printed** on the device.
+The wording "this computer, not the device" is a leftover from the emulator: on the device `N` is measured with the chip's own timer (`esp_timer_get_time()` around `visionProcess`) and **is the number you want**. It includes the automatic silent retry (a poor first pass is repeated once, so a doubled number is normal for a dim photo). The thinner/thicker ink time, the stage times and the live-check time are **not printed** on the device.
 
-For a PC reference, the whole pass takes about **9 ms** on a desktop CPU (`pio test -e native -f test_vision -vv`); the S3 at
-240 MHz with software doubles is much slower, so expect **hundreds of milliseconds to a few seconds** (*a guess*).
+For a PC reference, the whole pass takes about **9 ms** on a desktop CPU (`pio test -e native -f test_vision -vv`); the S3 at 240 MHz with software doubles is much slower, so expect **hundreds of milliseconds to a few seconds** (*a guess*).
 
 **Do:** capture 5 pages (clean, dim, tilted, messy, a blank page) and write down the `N` of each.
 
@@ -541,6 +491,4 @@ Put the numbers where the project keeps them, so the next session can act on the
 * A phone photo of the **Review screen** next to the paper for each capture, and the flash image of the file system (3.3) if any power pulse failed.
 
 **Not available today (ask if you want them):** there is **no way to save the raw 640 x 480 snapshot from the device**. The emulator
-can already read a raw RGB565 dump as a test photo (`EMU_PHOTO`, see [firmware/emu/README.md](../firmware/emu/README.md)), so the most
-valuable addition after day one is a function that writes the snapshot buffer (`paper.snap`, 614,400 bytes) to `/littlefs/snap.raw`,
-to be read back with the 3.3 procedure (*unverified idea*). There is also no Check-screen fps counter and no per-stage vision timing.
+can already read a raw RGB565 dump as a test photo (`EMU_PHOTO`, see [firmware/emu/README.md](../firmware/emu/README.md)), so the most valuable addition after day one is a function that writes the snapshot buffer (`paper.snap`, 614,400 bytes) to `/littlefs/snap.raw`, to be read back with the 3.3 procedure (*unverified idea*). There is also no Check-screen fps counter and no per-stage vision timing.

@@ -40,6 +40,8 @@ pio run -e cores3 -t upload && pio device monitor
 
 If the upload can't find the board: hold the reset button for about 3 s until the green light blinks (download mode), then upload again.
 
+**First day with the device?** Follow the ordered checklist in [`../docs/day-one-runbook.md`](../docs/day-one-runbook.md).
+
 ## The hardware-check app
 
 Tap the **right half of the bottom bar** for the next page and the **left half** to go back. Every page also prints its
