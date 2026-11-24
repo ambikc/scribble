@@ -11,7 +11,9 @@
 //
 // Pixels are native RGB565 uint16_t (what vision.h and Renderer::frame565 expect), whatever byte order the sensor delivers.
 // Device pin map, power sequence and every other number that needs the real hardware: docs/hardware-notes.md "Camera bring-up";
-// each is marked `UNVERIFIED on hardware` in camera.cpp.
+// camera.cpp tags each one CONFIRMED / CORRECTED (from the vendor sources) or `UNVERIFIED on hardware` (decided at the first power-on).
+// On the device, update() also parks the game loop for the camera task's SCCB bursts (start-up, exposure lock): the camera's I2C and
+// M5Unified's share one bus without a common lock.
 // Emulator (#ifdef EMU): serves test photos instead of a sensor (see camera.cpp and emu/README.md): the synthetic template shots of
 // shared/golden/vision_frames.bin by case name (env EMU_PHOTO_CASE or the script command `photo <case>`) or a raw / PPM photo file
 // (env EMU_PHOTO). The live view settles (out of focus for the first moment) and has frame-to-frame noise, so the lights can turn green over time.
