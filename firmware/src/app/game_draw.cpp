@@ -129,6 +129,7 @@ void Game::tickDraw(const InputState& in) {
   if (hit) {
     if (!std::strcmp(hit, "back")) { saveLevel(*this); goBack(); return; }
     if (!std::strcmp(hit, "menu")) {
+      saveLevel(*this);                                      // he may walk away from the menu (Home, Levels, power off): never lose the edits
       if (!d.menuSnap) d.menuSnap = static_cast<LevelSnap*>(bigAlloc(sizeof(LevelSnap)));
       if (d.menuSnap) { snapTake(level, *d.menuSnap); d.menuSnapValid = true; }
       menuFrom = Screen::Draw; go(Screen::Menu); return;
