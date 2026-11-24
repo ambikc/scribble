@@ -174,8 +174,30 @@ void test_pin_move_clamps_and_drop_clears_a_hole() {
   TEST_ASSERT_FALSE(getBit(l.ground, 160, 100 + FLAG_SAFE_RADIUS - 2));
   pinMove(l, Pin::Start, -50, 999);                                                // dragged off the field: stays on it
   TEST_ASSERT_EQUAL_INT(8, l.startX); TEST_ASSERT_EQUAL_INT(WORLD_H - 2, l.startY);
-  pinMove(l, Pin::Flag, 999, -50);
-  TEST_ASSERT_EQUAL_INT(WORLD_W - 8, l.flagX); TEST_ASSERT_EQUAL_INT(8 + FLAG_CENTER_DY, l.flagY);
+  pinMove(l, Pin::Flag, 999, -50);                                                 // ...and a top corner is pushed down below the corner chip
+  TEST_ASSERT_EQUAL_INT(WORLD_W - 8, l.flagX); TEST_ASSERT_EQUAL_INT(PIN_CHIP_CLEAR + FLAG_CENTER_DY, l.flagY);
+}
+
+/** A pin dragged into a top corner must stay grabbable: the corner chips win every touch within 54 px of the corner, so after
+ *  pinMove the grab centre of either pin is outside that area and a touch exactly there grabs the same pin again. */
+void test_pin_never_ends_under_a_corner_chip() {
+  Level l; blank(l);
+  for (int y = -10; y <= WORLD_H + 10; y += 3) for (int x = -10; x <= WORLD_W + 10; x += 3) {
+    l.flagX = -500; l.flagY = -500;                                                // the other pin far away: the grab is unambiguous
+    pinMove(l, Pin::Start, x, y);
+    TEST_ASSERT_FALSE(inChipCorner(l.startX, l.startY));
+    TEST_ASSERT_TRUE(pinGrab(l, l.startX, l.startY) == Pin::Start);
+    l.startX = -500; l.startY = -500;
+    pinMove(l, Pin::Flag, x, y);
+    TEST_ASSERT_FALSE(inChipCorner(l.flagX, l.flagY - FLAG_CENTER_DY));
+    TEST_ASSERT_TRUE(pinGrab(l, l.flagX, l.flagY - FLAG_CENTER_DY) == Pin::Flag);
+  }
+  pinMove(l, Pin::Start, 5, 5);   TEST_ASSERT_EQUAL_INT(8, l.startX);  TEST_ASSERT_EQUAL_INT(PIN_CHIP_CLEAR, l.startY);
+  pinMove(l, Pin::Start, 300, 20); TEST_ASSERT_EQUAL_INT(300, l.startX); TEST_ASSERT_EQUAL_INT(PIN_CHIP_CLEAR, l.startY);
+  pinMove(l, Pin::Start, 160, 20); TEST_ASSERT_EQUAL_INT(20, l.startY);            // the middle of the top edge is free: untouched
+  pinMove(l, Pin::Start, 60, 20);  TEST_ASSERT_EQUAL_INT(20, l.startY);            // just right of the chip's reach
+  TEST_ASSERT_TRUE(inChipCorner(54, 54));  TEST_ASSERT_FALSE(inChipCorner(55, 54)); TEST_ASSERT_FALSE(inChipCorner(54, 55));
+  TEST_ASSERT_TRUE(inChipCorner(266, 10)); TEST_ASSERT_FALSE(inChipCorner(265, 10)); TEST_ASSERT_FALSE(inChipCorner(300, 60));
 }
 
 void test_ghost_finger_timing() {
@@ -259,6 +281,7 @@ int main(int, char**) {
   RUN_TEST(test_undo_restores_pins_but_not_name_or_rev);
   RUN_TEST(test_pin_grab_radius_and_nearest);
   RUN_TEST(test_pin_move_clamps_and_drop_clears_a_hole);
+  RUN_TEST(test_pin_never_ends_under_a_corner_chip);
   RUN_TEST(test_ghost_finger_timing);
   RUN_TEST(test_scenario_script);
   return UNITY_END();

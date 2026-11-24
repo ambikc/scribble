@@ -45,6 +45,23 @@ d=$(fs title_play mix); check title_play "$(screens $d title menus_title_play.tx
 d=$(fs title_play2 mix); sed -i 's/"lastSlot":2/"lastSlot":7/' $d/settings.json     # last played slot is empty -> the first filled one
 screens $d title menus_title_play.txt > /dev/null; check title_play_falls_back_to_first_level "$(last $d)" 0
 
+# first launch: the Play tile opens the starter level in Draw (the lesson's gap cannot be crossed) until he has pressed Play inside Draw once
+d=$(fs title_first); sed -i 's/"firstRunDone":true/"firstRunDone":false/' $d/settings.json
+check title_first_run_play_opens_draw "$(screens $d title menus_title_first.txt)" "title>draw>play>menu>title>play"
+check title_first_run_done_after_draws_play "$(grep -c '"firstRunDone":true' $d/settings.json)" 1
+python3 -I - $OUT/first_noghost.ppm $OUT/first_ghost.ppm <<'PY' && echo "PASS title_first_run_ghost_finger_after_3s" || { echo "FAIL title_first_run_ghost_finger_after_3s"; fail=1; }
+import sys
+def ppm(p):
+    b = open(p, 'rb').read(); parts = b.split(b'\n', 3); w, h = map(int, parts[1].split()); return w, parts[3]
+w, a = ppm(sys.argv[1]); _, b = ppm(sys.argv[2])
+diff = sum(1 for y in range(100, 136) for x in range(60, 130) if a[(y * w + x) * 3:(y * w + x) * 3 + 3] != b[(y * w + x) * 3:(y * w + x) * 3 + 3])
+sys.exit(0 if diff > 100 else 1)
+PY
+# full box: the paper tile and the Draw tile both refuse at once
+d=$(fs title_full); for i in 3 4 5 6 7 8 9; do cp $d/slot1.scrb $d/slot$i.scrb; done
+check title_full_box_refuses_paper_and_draw "$(screens $d title menus_title_paper_full.txt)" "title>picker>title>picker"
+check title_full_box_nothing_created "$(ls $d | grep -c 'slot.\.scrb')" 10
+
 # ---- Picker (the MIX fixture) ----
 d=$(fs picker mix)
 check picker "$(screens $d picker menus_picker.txt)" "picker>chooser>draw>picker>chooser>draw>picker>play"

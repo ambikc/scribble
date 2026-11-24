@@ -3,5 +3,5 @@
 # slot: 0
 # expect-count: 1 [win button edit]
 # expect-count: 1 [win button
-500 tap 50 215
-1000 quit
+1000 tap 50 215
+1500 quit

@@ -1,0 +1,18 @@
+# Regression: a pin dragged into a top corner stays grabbable (it used to end under a corner chip for ever).
+# Drag the Flag to the top-right corner, let it autosave, then drag it again starting in the chip's forgiveness margin (300, 52): it must move.
+# run: emu/run_script.sh emu/scripts/fix_pin_corner.txt     (the Bridge, slot 0; the Flag grab centre starts at (280, 100))
+# start: draw
+# slot: 0
+# expect-count: 2 [level crc
+# expect-not: [screen menu]
+500 down 280 100
+560 move 300 100
+620 move 312 8
+680 up
+7000 log flag-landed-and-saved
+7200 down 300 52
+7260 move 250 90
+7320 move 200 100
+7380 up
+13500 log moved-again-and-saved
+14000 quit

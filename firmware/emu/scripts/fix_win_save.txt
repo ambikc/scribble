@@ -1,0 +1,8 @@
+# Regression: the settings write of a win is deferred (run_regress_tests.sh checks the order: [win slot] < [screen win] < [win saved slot]).
+# start: play
+# slot: 3
+# levels: 3=bridge
+# expect-count: 1 [win saved slot 3]
+# expect: [win slot 3]
+200 tilt 0.5
+8000 quit

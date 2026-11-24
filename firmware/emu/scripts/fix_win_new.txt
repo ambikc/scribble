@@ -1,0 +1,10 @@
+# Win -> New: pendingSlot = the first free slot; the Chooser's Finger then puts the new level there (slot 3 here).
+# run: emu/run_script.sh emu/scripts/fix_win_new.txt
+# start: win
+# slot: 0
+# expect: [win button new]
+# expect: [screen chooser]
+# expect: [screen draw]
+1000 tap 270 215
+1600 tap 236 140
+2200 quit

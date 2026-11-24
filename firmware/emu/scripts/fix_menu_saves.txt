@@ -1,0 +1,12 @@
+# Regression: edits are saved when the menu opens (he may walk away from the menu without ever coming back to Draw).
+# Stroke, open the menu 0.1 s later (long before the 5 s autosave), then quit: [level crc] must have been printed and slot0.scrb must have changed.
+# run: emu/run_regress_tests.sh (checks the file); emu/run_script.sh emu/scripts/fix_menu_saves.txt checks the log line
+# start: draw
+# slot: 0
+# expect-count: 1 [level crc
+# expect: [screen menu]
+500 down 100 60
+540 move 200 60
+580 up
+700 tap 296 24
+1500 quit

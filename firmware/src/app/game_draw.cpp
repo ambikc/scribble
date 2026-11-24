@@ -97,7 +97,18 @@ void Game::tickDraw(const InputState& in) {
     }
   }
 
-  chipBack(); chipMenu();
+  // A pin parked in a top corner (an old file, or one dropped before pinMove learned to keep clear) lies under a chip and could never be
+  // grabbed again: move it out now. Cheap, and only touches such a level.
+  if (screenT < 0.02f) {
+    if (inChipCorner(level.startX, level.startY)) { pinMove(level, Pin::Start, level.startX, level.startY); markEdited(); }
+    if (inChipCorner(level.flagX, level.flagY - FLAG_CENTER_DY)) { pinMove(level, Pin::Flag, level.flagX, level.flagY - FLAG_CENTER_DY); markEdited(); }
+  }
+
+  // A touch in the forgiveness margin of a corner chip (not on the chip itself) that is also within reach of a pin grabs the pin: the chip
+  // would otherwise win and a pin close to a corner would be hard to take hold of. On that tick the corner chips are not offered at all.
+  const bool pinFirst = t.pressed && t.y < BAR_Y && inChipCorner(t.x, t.y) && !(t.y < 48 && (t.x < 48 || t.x >= WORLD_W - 48)) &&
+                        pinGrab(level, t.x, t.y) != Pin::None;
+  if (!pinFirst) { chipBack(); chipMenu(); }
   struct Item { const char* id; int w; Icon icon; Tool tool; };
   static const Item items[] = {
     {"ground", 52, Icon::Ground, Tool::Ground}, {"spike", 56, Icon::Spike, Tool::Spike}, {"bouncy", 52, Icon::Bouncy, Tool::Bouncy},
@@ -118,6 +129,7 @@ void Game::tickDraw(const InputState& in) {
   if (hit) {
     if (!std::strcmp(hit, "back")) { saveLevel(*this); goBack(); return; }
     if (!std::strcmp(hit, "menu")) {
+      saveLevel(*this);                                      // he may walk away from the menu (Home, Levels, power off): never lose the edits
       if (!d.menuSnap) d.menuSnap = static_cast<LevelSnap*>(bigAlloc(sizeof(LevelSnap)));
       if (d.menuSnap) { snapTake(level, *d.menuSnap); d.menuSnapValid = true; }
       menuFrom = Screen::Draw; go(Screen::Menu); return;

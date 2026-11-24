@@ -4,6 +4,7 @@ set -u
 here=$(cd "$(dirname "$0")" && pwd); fail=0
 bash "$here/run_menus_tests.sh" > /tmp/run_menus.log 2>&1 && echo "PASS menus" || { echo "FAIL menus"; tail -20 /tmp/run_menus.log; fail=1; }
 bash "$here/run_draw_tests.sh"  > /tmp/run_draw.log 2>&1  && echo "PASS draw"  || { echo "FAIL draw";  tail -20 /tmp/run_draw.log;  fail=1; }
+bash "$here/run_regress_tests.sh" > /tmp/run_regress.log 2>&1 && echo "PASS regress" || { echo "FAIL regress"; tail -20 /tmp/run_regress.log; fail=1; }
 bash "$here/paper_test.sh" > /tmp/run_paper.log 2>&1 && echo "PASS paper ($(tail -1 /tmp/run_paper.log))" || { echo "FAIL paper"; tail -20 /tmp/run_paper.log; fail=1; }
 for s in "$here"/scripts/play_*.txt "$here"/scripts/e2e_*.txt "$here"/scripts/paper_*.txt; do
   [ -f "$s" ] || continue

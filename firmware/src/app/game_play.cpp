@@ -29,6 +29,8 @@ constexpr uint16_t C_WIN_RAYS = 0xDF9C;                 // #D9F3E4, the green-wh
 constexpr uint16_t C_HINT = 0x5AA8;                     // #5B5646, the tilt-hint arrows
 constexpr size_t SCENE_BYTES = size_t(SCREEN_W) * SCREEN_H * 2;
 constexpr float PI_F = 3.14159265f;
+constexpr float WIN_LOCK_S = 0.6f;                      // no button works for this long after the Win screen appears
+constexpr float WIN_SAVE_DELAY_S = 0.7f;                // the deferred settings write
 
 uint32_t rng = 0x2545F491u;
 float frand() {                                         // effects only: a cheap xorshift in [0, 1)
@@ -63,6 +65,15 @@ void Game::playFxStep(float dt) {
   else { r.shakeX = 0; r.shakeY = 0; }                                                              // runs on every screen, so it can never stick
 }
 
+void flushSolved(Game& g) {
+  if (!g.play.solvedPending) return;
+  g.play.solvedPending = false;
+  g.store.saveSettings();
+#ifdef EMU
+  std::printf("[win saved slot %d]\n", g.play.solvedSlot);
+#endif
+}
+
 // =====================================================================================================================
 // Play
 // =====================================================================================================================
@@ -87,13 +98,13 @@ void Game::tickPlay(const InputState& in) {
 #ifdef EMU
     std::printf("[play edit]\n");
 #endif
-    play.nPuffs = 0; go(Screen::Draw); return;
+    play.nPuffs = 0; flushSolved(*this); go(Screen::Draw); return;
   }
   if ((hit && !std::strcmp(hit, "menu")) || in.keyBack) {   // Esc: the emulator's stand-in for the chip
 #ifdef EMU
     std::printf("[play menu]\n");
 #endif
-    menuFrom = Screen::Play; go(Screen::Menu); return;
+    menuFrom = Screen::Play; flushSolved(*this); go(Screen::Menu); return;
   }
   if (hit && !std::strcmp(hit, "restart")) {
     newWorld(play.world, level); play.spawnRing = 0.2f; audio.play(Sfx::Bloop);
@@ -130,11 +141,12 @@ void Game::tickPlay(const InputState& in) {
     audio.play(Sfx::Win); play.fxFlash = 0.12f; play.fxFlashColor = C_WIN_RAYS; play.winT = 0;
     spawn(1, float(level.flagX), float(level.flagY - 12), cGreen, 1, 0, 0.5f, 0, 2);
     spawn(24, float(level.flagX), float(level.flagY - 12), cConf, 4, 150, 1.4f, 3, 3);
-    store.markSolved(slot);
+    if (slot >= 0 && slot < SLOTS) { store.settings.solvedMask |= 1u << slot; play.solvedPending = true; play.solvedSlot = slot; }   // written later (flushSolved)
 #ifdef EMU
     std::printf("[win slot %d]\n", slot);
 #endif
   }
+  if (play.solvedPending && w.state != ST_CELEBRATING) flushSolved(*this);   // restarted during the celebration: no jingle to disturb any more
   if (w.state == ST_CELEBRATING) { play.winT += DT; if (play.winT >= WIN_SCREEN_DELAY) { play.winT = 0; go(Screen::Win); } }
 }
 
@@ -209,16 +221,26 @@ void Game::tickWin(const InputState& in) {
   items[2].id = "new"; items[2].icon = Icon::Plus; items[2].iconSize = 34;
   const int widths[3] = {104, 112, 104};
   bar(items, widths, 3);
-  const char* hit = ui.update(in);
+  const char* hit = ui.update(in);                        // always, so the UI keeps its press state; the result may be discarded below
+  const TouchState& t = in.touch;
+  // a touch that was already down when Win appeared, or that began within the first WIN_LOCK_S, never presses a button
+  if (screenT < 0.02f) play.winStale = (t.down || t.released) && !t.pressed;
+  if (t.pressed) play.winStale = screenT < WIN_LOCK_S;
   static const uint16_t cConf[4] = {PAL_RED, PAL_BLUE, PAL_YELLOW, PAL_GREEN};
   if (screenT < 4 && frand() < 0.35f) spawn(1, frand() * 320, -4, cConf, 4, 20, 3, 3, 3);   // confetti keeps falling for 4 s
-  if (!hit) return;
+  if (screenT >= WIN_SAVE_DELAY_S) flushSolved(*this);
+  if (!hit || screenT < WIN_LOCK_S || play.winStale) return;
+  flushSolved(*this);
 #ifdef EMU
   std::printf("[win button %s]\n", hit);
 #endif
   if (!std::strcmp(hit, "edit")) go(Screen::Draw);
   else if (!std::strcmp(hit, "again")) startPlay();
-  else if (!std::strcmp(hit, "new")) go(Screen::Chooser);
+  else if (!std::strcmp(hit, "new")) {
+    const int s = store.firstEmpty();                     // like modes.ts: the new level goes into the first free slot
+    if (s < 0) { say("All 10 slots are full"); menus.deleteMode = false; go(Screen::Picker); }
+    else { menus.pendingSlot = s; go(Screen::Chooser); }
+  }
 }
 
 void Game::drawWin() {

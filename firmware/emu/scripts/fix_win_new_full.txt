@@ -1,0 +1,10 @@
+# Win -> New with all 10 slots full: the toast "All 10 slots are full" and the Picker, not the Chooser.
+# start: win
+# slot: 0
+# levels: 3=bridge 4=bridge 5=bridge 6=bridge 7=bridge 8=bridge 9=bridge
+# expect: [win button new]
+# expect: [screen picker]
+# expect-not: [screen chooser]
+1000 tap 270 215
+1500 shot OUT/full.ppm
+2000 quit

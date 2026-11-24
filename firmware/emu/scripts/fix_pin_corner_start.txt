@@ -1,0 +1,17 @@
+# Regression: the Start ball dragged into the top-left corner can be dragged out again (the back chip must not swallow it).
+# start: draw
+# slot: 0
+# expect-count: 2 [level crc
+# expect-not: [screen menu]
+# expect-not: [screen picker]
+500 down 40 104
+560 move 30 100
+620 move 4 4
+680 up
+7000 log start-landed-and-saved
+7200 down 10 62
+7260 move 60 90
+7320 move 100 120
+7380 up
+13500 log moved-again-and-saved
+14000 quit
