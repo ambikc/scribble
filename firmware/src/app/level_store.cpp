@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #if defined(ARDUINO) && defined(BOARD_HAS_PSRAM)
 #include <esp_heap_caps.h>
@@ -32,11 +33,20 @@ void blankLevel(Level& out) {
 // ---- file helpers ------------------------------------------------------------------------------------------------
 static void slotPath(char* out, size_t cap, const char* root, int slot, const char* ext) { std::snprintf(out, cap, "%s/slot%d.%s", root, slot, ext); }
 
-/** The whole file into a malloc'd buffer. nullptr + *missing=true if it does not exist; nullptr + *missing=false on any other error. */
+/** Is there a regular file at `path`? Decided by stat(), never by an errno guess: a path that is missing, a directory, or not
+ *  reachable at all (ENOTDIR, ENAMETOOLONG, ...) holds no file. */
+static bool fileExists(const char* path) {
+  struct stat st;
+  return ::stat(path, &st) == 0 && S_ISREG(st.st_mode);
+}
+
+/** The whole file into a malloc'd buffer. nullptr + *missing=true if there is no regular file there (fileExists); nullptr +
+ *  *missing=false if the file exists but could not be read whole (an error, too large, out of memory). */
 static uint8_t* readFile(const char* path, size_t maxBytes, size_t* n, bool* missing) {
   *n = 0; *missing = false;
+  if (!fileExists(path)) { *missing = true; return nullptr; }
   FILE* f = std::fopen(path, "rb");
-  if (!f) { *missing = (errno == ENOENT); return nullptr; }
+  if (!f) return nullptr;
   uint8_t* buf = nullptr;
   if (std::fseek(f, 0, SEEK_END) == 0) {
     const long sz = std::ftell(f);
@@ -133,19 +143,21 @@ Level* LevelStore::ensureSlot(int i) {
 
 void LevelStore::clearSlot(int i) { std::free(slots[i]); slots[i] = nullptr; std::free(thumbs[i]); thumbs[i] = nullptr; }
 
-/** Load slotN.scrb into memory. Missing file = empty slot. Anything unreadable or invalid = empty slot + broken[i]; the file is kept. */
-void LevelStore::loadSlot(int i) {
+/** Load slotN.scrb into memory. No file (stat) = empty slot. A file that exists but is unreadable or invalid = empty slot + broken[i];
+ *  the file is kept. Returns true when a slot FILE exists (good or broken), which is what decides "first run". */
+bool LevelStore::loadSlot(int i) {
   clearSlot(i); broken[i] = false;
   char path[sizeof root_ + 24]; slotPath(path, sizeof path, root_, i, "scrb");
   size_t n; bool missing;
   uint8_t* bytes = readFile(path, MAX_FILE_BYTES, &n, &missing);
-  if (!bytes) { if (!missing) broken[i] = true; return; }          // unreadable or too large: warn, keep the file
+  if (!bytes) { if (!missing) broken[i] = true; return !missing; }   // unreadable or too large: warn, keep the file
   Level* l = ensureSlot(i);
   bool hasThumb = false;
-  if (!l) { std::free(bytes); return; }                              // out of memory: leave the slot empty (not "broken")
-  if (decodeLevel(bytes, n, *l, thumbs[i], &hasThumb) != LEVEL_OK) { clearSlot(i); broken[i] = true; std::free(bytes); return; }
+  if (!l) { std::free(bytes); return true; }                         // out of memory: leave the slot empty (not "broken")
+  if (decodeLevel(bytes, n, *l, thumbs[i], &hasThumb) != LEVEL_OK) { clearSlot(i); broken[i] = true; std::free(bytes); return true; }
   if (!hasThumb) makeThumbnail(*l, thumbs[i]);
   std::free(bytes);
+  return true;
 }
 
 bool LevelStore::begin(const char* root) {
@@ -166,13 +178,15 @@ bool LevelStore::begin(const char* root) {
     if (b) { b[n] = 0; parseSettings(reinterpret_cast<const char*>(b), settings); std::free(b); }
   }
 
-  bool any = false;
+  // First run = no slot FILE exists at all (stat) and settings say it never happened. Decided by the files, not by broken[i] or by
+  // an errno: a store holding only corrupt files is not a first run (they are the child's levels), and a path that is not a regular
+  // file (a directory, an unreachable path) holds no level.
+  bool anyFile = false;
   for (int i = 0; i < SLOTS; i++) {
     char tmp[sizeof root_ + 24]; slotPath(tmp, sizeof tmp, root_, i, "tmp"); std::remove(tmp);   // a save that never finished
-    loadSlot(i);
-    if (slots[i] || broken[i]) any = true;
+    if (loadSlot(i)) anyFile = true;
   }
-  if (!any && !settings.firstRunDone) {                              // factory lessons in slots 0-2 (docs/game-design.md section 2)
+  if (!anyFile && !settings.firstRunDone) {                              // factory lessons in slots 0-2 (docs/game-design.md section 2)
     void (*const lessons[3])(Level&) = { starterLevel, lessonSpike, lessonBouncy };
     for (int i = 0; i < 3; i++) {
       Level* l = ensureSlot(i);

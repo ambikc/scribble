@@ -186,6 +186,25 @@ void test_only_corrupt_files_still_count_as_not_first_run() {
   TEST_ASSERT_FALSE(s.settings.firstRunDone);
 }
 
+void test_a_slot_path_that_is_not_a_file_is_empty_not_broken() {
+  // fopen() of a directory fails (or reads nothing) with an errno other than ENOENT: that must not mark the slot broken, and a
+  // store whose only "slot" is such a path is still a first run (existence is decided by stat(), not by errno or broken[i])
+  TEST_ASSERT_EQUAL_INT(0, ::mkdir(P("slot5.scrb").c_str(), 0777));
+  LevelStore s; s.begin(dir);
+  TEST_ASSERT_FALSE(s.broken[5]); TEST_ASSERT_NULL(s.slots[5]);
+  TEST_ASSERT_NOT_NULL(s.slots[0]); TEST_ASSERT_NOT_NULL(s.slots[1]); TEST_ASSERT_NOT_NULL(s.slots[2]);   // the lessons
+  TEST_ASSERT_TRUE(s.settings.firstRunDone);
+  for (int i = 0; i < SLOTS; i++) TEST_ASSERT_FALSE(s.broken[i]);
+}
+
+void test_an_unreachable_slot_path_is_empty_not_broken() {
+  // the root itself is a FILE: every slot path fails with ENOTDIR, not ENOENT. Nothing is broken; nothing can be saved.
+  const std::string fileRoot = P("not_a_dir");
+  spitStr(fileRoot, "x");
+  LevelStore s; s.begin(fileRoot.c_str());
+  for (int i = 0; i < SLOTS; i++) TEST_ASSERT_FALSE(s.broken[i]);
+}
+
 void test_oversized_files_are_broken_too() {
   std::vector<uint8_t> big(MAX_FILE_BYTES + 100, 0x55);
   spit(P("slot2.scrb"), big.data(), big.size());
@@ -327,6 +346,8 @@ int main() {
   RUN_TEST(test_save_to_an_unwritable_root_returns_false);
   RUN_TEST(test_corrupt_files_are_flagged_and_never_deleted);
   RUN_TEST(test_only_corrupt_files_still_count_as_not_first_run);
+  RUN_TEST(test_a_slot_path_that_is_not_a_file_is_empty_not_broken);
+  RUN_TEST(test_an_unreachable_slot_path_is_empty_not_broken);
   RUN_TEST(test_oversized_files_are_broken_too);
   RUN_TEST(test_saving_over_a_corrupt_slot_keeps_the_old_bytes_as_bad);
   RUN_TEST(test_failed_save_over_a_corrupt_slot_puts_it_back);
