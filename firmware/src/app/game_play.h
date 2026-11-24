@@ -18,7 +18,16 @@ struct PlayState {
   uint16_t* scene = nullptr;       // 320 x 240 RGB565, byte-swapped like Renderer::px(); null = could not allocate (draw uncached)
   bool sceneOk = false;
   uint32_t sceneCrc = 0; bool haveCrc = false;
+
+  // The win is remembered in RAM at once (store.settings.solvedMask) but the settings.json write (a LittleFS fsync, 20-200 ms) waits until the
+  // Win screen has been up for WIN_SAVE_DELAY_S or he leaves Play/Win, so it never lands on the jingle. A power cut in between loses a tick mark.
+  bool solvedPending = false; int solvedSlot = -1;
+  // Win screen: a touch that began before it appeared, or in its first WIN_LOCK_S, must not press a button (a child still mashing Jump).
+  bool winStale = false;
 };
+
+/** Write settings.json now if a win is still waiting to be saved (no-op otherwise). Called when leaving Play / Win and by tickWin after 0.7 s. */
+void flushSolved(Game& g);
 
 /** The Play scene alone (level, puffs, flag, ball, particles, tilt hint, red flash) without buttons: the pause menu paints it behind its dimmer. */
 void drawPlayScene(Game& g);
